@@ -56,15 +56,15 @@ export async function createClientAction(_prev: string | null, formData: FormDat
 async function updateOwn(
   id: string,
   patch: Record<string, unknown>,
-  expected?: { column: string; value: Record<string, string> },
+  expected: Record<string, Record<string, string>> = {},
 ): Promise<ActionResult> {
   const { supabase } = await requireUser();
   let query = supabase.from("clients").update(patch).eq("id", id);
-  if (expected) query = query.eq(expected.column, JSON.stringify(expected.value));
+  for (const [column, value] of Object.entries(expected)) query = query.eq(column, JSON.stringify(value));
   const { data, error } = await query.select("id");
   if (error) return { ok: false, error: "儲存失敗：" + error.message };
   if (!data || data.length !== 1) {
-    return { ok: false, error: expected ? "資料已更新或冇權限修改，請重新載入客戶卡再試。" : NO_ACCESS };
+    return { ok: false, error: Object.keys(expected).length > 0 ? "資料已更新或冇權限修改，請重新載入客戶卡再試。" : NO_ACCESS };
   }
   revalidatePath("/board");
   revalidatePath(`/clients/${id}`);
@@ -80,51 +80,63 @@ async function loadEnc(id: string, column: string): Promise<Record<string, strin
   return (row[column] as Record<string, string>) ?? {};
 }
 
-export async function updateInfoAction(id: string, raw: Record<string, string>): Promise<ActionResult> {
-  const info = cleanInfo(raw);
-  if (typeof info === "string") return { ok: false, error: info };
-  const existing = await loadEnc(id, "info");
-  if (!existing) return { ok: false, error: NO_ACCESS };
-  return updateOwn(id, { info: encryptColumn(id, "info", existing, info) });
-}
-
 export async function saveFormAction(
   id: string,
   stage: FormStage,
-  values: Record<string, string>,
+  values: Record<string, string> | null,
   checks: Partial<Record<CheckKey, boolean>>,
   followUp?: FollowUp,
+  basicInfo?: Record<string, string>,
 ): Promise<ActionResult> {
   const def = CLIENT_FORMS.find((f) => f.stage === stage);
   if (!def || (followUp !== undefined && (stage !== "PC" || !FOLLOW_UPS.some((item) => item.key === followUp)))) {
     return { ok: false, error: "表格無效" };
   }
 
-  const sections = def.sections.filter((section) => section.followUp === followUp);
-  const allowed = formFieldKeys({ ...def, sections });
-  const fieldType = new Map(sections.flatMap((s) => s.fields).map((f) => [f.key, f.type]));
-  const clean: Record<string, string> = {};
-  for (const k of allowed) {
-    const v = String(values[k] ?? "").slice(0, MAX_LEN);
-    const t = fieldType.get(k);
-    if (v.trim() && t === "number" && !Number.isFinite(Number(v.replace(/[,\s]/g, "")))) {
-      return { ok: false, error: "金額要係數字" };
-    }
-    if (v.trim() && t === "rating" && !/^(10|[1-9])$/.test(v.trim())) {
-      return { ok: false, error: "自評要係 1–10" };
-    }
-    if (t === "url" && v.trim() && !proposalUrl(v)) {
-      return { ok: false, error: "請填寫有效嘅 HTTPS 計劃書連結" };
-    }
-    clean[k] = t === "checkbox" ? (v === "true" ? "true" : "") : v;
+  if ((basicInfo !== undefined && stage !== "RR") || (values === null && basicInfo === undefined)) {
+    return { ok: false, error: "表格無效" };
   }
 
-  const existing = await loadEnc(id, def.column);
-  if (!existing) return { ok: false, error: NO_ACCESS };
+  const info = basicInfo === undefined ? undefined : cleanInfo(basicInfo);
+  if (typeof info === "string") return { ok: false, error: info };
 
-  const patch: Record<string, unknown> = { [def.column]: encryptColumn(id, def.column, existing, clean) };
-  for (const c of def.checks?.items ?? []) patch[c.key] = Boolean(checks[c.key]);
-  return updateOwn(id, patch, { column: def.column, value: existing });
+  const form: Record<string, string> = {};
+  if (values !== null) {
+    const sections = def.sections.filter((section) => section.followUp === followUp);
+    const allowed = formFieldKeys({ ...def, sections });
+    const fieldType = new Map(sections.flatMap((s) => s.fields).map((f) => [f.key, f.type]));
+    for (const k of allowed) {
+      const v = String(values[k] ?? "").slice(0, MAX_LEN);
+      const t = fieldType.get(k);
+      if (v.trim() && t === "number" && !Number.isFinite(Number(v.replace(/[,\s]/g, "")))) {
+        return { ok: false, error: "金額要係數字" };
+      }
+      if (v.trim() && t === "rating" && !/^(10|[1-9])$/.test(v.trim())) {
+        return { ok: false, error: "自評要係 1–10" };
+      }
+      if (t === "url" && v.trim() && !proposalUrl(v)) {
+        return { ok: false, error: "請填寫有效嘅 HTTPS 計劃書連結" };
+      }
+      form[k] = t === "checkbox" ? (v === "true" ? "true" : "") : v;
+    }
+  }
+
+  const patch: Record<string, unknown> = {};
+  const expected: Record<string, Record<string, string>> = {};
+  if (info) {
+    const existing = await loadEnc(id, "info");
+    if (!existing) return { ok: false, error: NO_ACCESS };
+    expected.info = existing;
+    patch.info = encryptColumn(id, "info", existing, info);
+  }
+  if (values !== null) {
+    const existing = await loadEnc(id, def.column);
+    if (!existing) return { ok: false, error: NO_ACCESS };
+    expected[def.column] = existing;
+    patch[def.column] = encryptColumn(id, def.column, existing, form);
+    for (const c of def.checks?.items ?? []) patch[c.key] = Boolean(checks[c.key]);
+  }
+  return updateOwn(id, patch, expected);
 }
 
 async function updateStage(id: string, stage: PipelineStage, season?: string | null): Promise<ActionResult> {
@@ -138,7 +150,7 @@ async function updateStage(id: string, stage: PipelineStage, season?: string | n
       [REFERRAL_STAGE_KEY]: stage === "REFERRAL" ? "true" : "",
     });
   }
-  const res = await updateOwn(id, patch, { column: "form_pc", value: existing });
+  const res = await updateOwn(id, patch, { form_pc: existing });
   if (res.ok) revalidatePath("/seasons");
   return res;
 }

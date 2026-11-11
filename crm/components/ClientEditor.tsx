@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { deleteClientAction, moveSeasonAction, moveStageAction, saveFormAction, updateInfoAction, type ActionResult } from "@/app/(app)/clients/actions";
+import { deleteClientAction, moveSeasonAction, moveStageAction, saveFormAction, type ActionResult } from "@/app/(app)/clients/actions";
 import InfoFields from "./InfoFields";
 import { NO_SEASON, SEASONS, type SeasonColumn } from "@/lib/seasons";
 import {
@@ -39,7 +39,8 @@ export type EditorClient = {
   forms: Record<ClientFormColumn, Record<string, string>>;
 };
 
-type Tab = "info" | ClientFormColumn | FollowUp;
+type Tab = ClientFormColumn | FollowUp;
+type EditableSection = Tab | "info";
 
 function FieldInput({
   f,
@@ -89,13 +90,13 @@ function FieldInput({
 
 export default function ClientEditor({ client, readOnly }: { client: EditorClient; readOnly: boolean }) {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>("info");
+  const [tab, setTab] = useState<Tab>("form_rr");
   const [info, setInfo] = useState<Info>(client.info);
   const [forms, setForms] = useState(client.forms);
   const [checks, setChecks] = useState<Checks>(client.checks);
   const [stage, setStage] = useState<PipelineStage>(client.stage);
   const [season, setSeason] = useState<SeasonColumn>(client.season);
-  const [dirty, setDirty] = useState<Set<Tab>>(new Set());
+  const [dirty, setDirty] = useState<Set<EditableSection>>(new Set());
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -107,7 +108,7 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
     return () => window.removeEventListener("beforeunload", h);
   }, [dirty]);
 
-  const markDirty = (t: Tab) => setDirty((d) => new Set(d).add(t));
+  const markDirty = (t: EditableSection) => setDirty((d) => new Set(d).add(t));
   const missing = useMemo(() => missingChecks(checks), [checks]);
   const ready = missing.length === 0;
   const checksDirty = dirty.has("form_rr") || dirty.has("form_nr2");
@@ -126,23 +127,23 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
     });
   };
 
-  const clearDirty = (t: Tab) =>
-    setDirty((d) => {
-      const n = new Set(d);
-      n.delete(t);
-      return n;
-    });
+  const activeFollowUp = FOLLOW_UPS.find((item) => item.key === tab)?.key;
+  const activeForm = CLIENT_FORMS.find((f) => f.column === (activeFollowUp ? "form_pc" : tab))!;
+  const infoDirty = tab === "form_rr" && dirty.has("info");
 
   const save = () => {
-    if (tab === "info") {
-      run(() => updateInfoAction(client.id, info), () => clearDirty("info"));
-      return;
-    }
-    const followUp = FOLLOW_UPS.find((item) => item.key === tab)?.key;
-    const def = CLIENT_FORMS.find((f) => f.column === (followUp ? "form_pc" : tab))!;
     const cs: Partial<Record<CheckKey, boolean>> = {};
-    for (const c of def.checks?.items ?? []) cs[c.key] = checks[c.key];
-    run(() => saveFormAction(client.id, def.stage, forms[def.column], cs, followUp), () => clearDirty(tab));
+    for (const c of activeForm.checks?.items ?? []) cs[c.key] = checks[c.key];
+    const values = dirty.has(tab) ? forms[activeForm.column] : null;
+    run(
+      () => saveFormAction(client.id, activeForm.stage, values, cs, activeFollowUp, infoDirty ? info : undefined),
+      () => setDirty((previous) => {
+        const saved = new Set(previous);
+        saved.delete(tab);
+        if (infoDirty) saved.delete("info");
+        return saved;
+      }),
+    );
   };
 
   const changeStage = (to: PipelineStage) => {
@@ -200,24 +201,36 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
             <b>{def.title}</b> — {def.timing}
           </p>
         )}
+        {def.stage === "RR" && (
+          <section className="form-section">
+            <h3>基本資料</h3>
+            <div className="grid-2">
+              <InfoFields
+                value={info}
+                disabled={readOnly || pending}
+                onChange={(value) => {
+                  setInfo(value);
+                  markDirty("info");
+                }}
+              />
+              <fieldset className="checklist">
+                <legend>基本資料 Checklist</legend>
+                {INFO_KEYS.map((key) => (
+                  <label className="check-row" key={key}>
+                    <input type="checkbox" checked={Boolean(info[key].trim())} disabled />
+                    <span>{INFO_LABELS[key]}</span>
+                  </label>
+                ))}
+              </fieldset>
+            </div>
+          </section>
+        )}
         {def.tips && (
           <ul className="form-tips">
             {def.tips.map((t) => (
               <li key={t}>＊{t}</li>
             ))}
           </ul>
-        )}
-        {def.stage === "RR" && (
-          <fieldset className="checklist">
-            <legend>基本資料 Checklist</legend>
-            {INFO_KEYS.map((key) => (
-              <label className="check-row" key={key}>
-                <input type="checkbox" checked={Boolean(info[key].trim())} disabled />
-                <span>{INFO_LABELS[key]}</span>
-              </label>
-            ))}
-            {dirty.has("info") && <p className="muted small">基本資料未儲存</p>}
-          </fieldset>
         )}
         {def.sections.filter((section) => section.followUp === followUp).map((s, i) => (
           <section key={i} className="form-section">
@@ -263,7 +276,7 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
                   type="checkbox"
                   id={c.key}
                   checked={checks[c.key]}
-                  disabled={readOnly}
+                  disabled={readOnly || pending}
                   onChange={(e) => {
                     setChecks((x) => ({ ...x, [c.key]: e.target.checked }));
                     markDirty(def.column);
@@ -277,7 +290,7 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
                     <FieldInput
                       f={{ ...c.fill, type: c.fill.type ?? "text" }}
                       value={values[c.fill.key] ?? ""}
-                      disabled={readOnly}
+                      disabled={readOnly || pending}
                       onChange={(v) => setField(def.column, c.fill!.key, v)}
                     />
                   </div>
@@ -296,10 +309,9 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
     return { n: keys.filter((k) => (forms[col]?.[k] ?? "").trim() !== "").length, total: keys.length };
   };
   const tabs: { key: Tab; label: string; count?: string }[] = [
-    { key: "info", label: "基本資料" },
     ...CLIENT_FORMS.map((f) => {
       const c = filled(f.column);
-      return { key: f.column as Tab, label: stageLabel(f.stage), count: `${c.n}/${c.total}` };
+      return { key: f.column, label: stageLabel(f.stage), count: `${c.n}/${c.total}` };
     }),
     ...FOLLOW_UPS.map(({ key, label }) => ({ key, label })),
   ];
@@ -307,7 +319,6 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
   const maritalText = MARITAL.find((m) => m.value === info.marital)?.label;
   const meta = [info.age && `${info.age}歲`, genderText, info.occupation, maritalText].filter(Boolean).join(" · ");
   const doneChecks = 8 - missing.length;
-  const activeFollowUp = FOLLOW_UPS.find((item) => item.key === tab)?.key;
 
   return (
     <div>
@@ -379,33 +390,22 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
           >
             {t.label}
             {t.count && <span className="tab-count" aria-hidden="true">{t.count}</span>}
-            {dirty.has(t.key) && <span className="dot" title="未儲存" />}
+            {(dirty.has(t.key) || (t.key === "form_rr" && dirty.has("info"))) && <span className="dot" title="未儲存" />}
           </button>
         ))}
       </div>
 
       <div className="card">
-        {tab === "info" ? (
-          <InfoFields
-            value={info}
-            disabled={readOnly}
-            onChange={(v) => {
-              setInfo(v);
-              markDirty("info");
-            }}
-          />
-        ) : (
-          renderForm(CLIENT_FORMS.find((f) => f.column === (activeFollowUp ? "form_pc" : tab))!, activeFollowUp)
-        )}
+        {renderForm(activeForm, activeFollowUp)}
 
         {!readOnly && (
           <div className="savebar">
-            <button className="btn btn-primary" onClick={save} disabled={pending || !dirty.has(tab)}>
+            <button className="btn btn-primary" onClick={save} disabled={pending || (!dirty.has(tab) && !infoDirty)}>
               {pending ? "儲存中…" : "儲存"}
             </button>
             {msg && <span className={msg.ok ? "notice" : "error"}>{msg.text}</span>}
             <span className="spacer" />
-            {tab === "info" && (
+            {tab === "form_rr" && (
               <button className="btn btn-danger btn-sm" onClick={remove} disabled={pending}>
                 刪除客戶
               </button>

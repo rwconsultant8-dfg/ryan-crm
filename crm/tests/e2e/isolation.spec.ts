@@ -55,11 +55,19 @@ test.describe.serial("權限隔離", () => {
       "Fact Finding", "Needs", "Presentation", "Closing", "Referral",
     ]);
 
-    await page.getByRole("tab", { name: "Fact Finding" }).click();
+    await expect(page.getByRole("tab")).toHaveText([
+      /Fact Finding/, /Needs/, /Presentation/, "Closing", "Referral",
+    ]);
+    await expect(page.getByRole("tab", { name: "Fact Finding" })).toHaveAttribute("aria-selected", "true");
     const checklist = page.getByRole("group", { name: "基本資料 Checklist" });
     for (const label of ["姓名", "年齡", "性別", "職業", "婚姻狀況"]) {
       await expect(checklist.getByLabel(label)).toBeChecked();
     }
+    const occupation = page.getByRole("textbox", { name: "職業", exact: true });
+    await occupation.clear();
+    await expect(checklist.getByRole("checkbox", { name: "職業" })).not.toBeChecked();
+    await occupation.fill("資深會計師");
+    await expect(checklist.getByRole("checkbox", { name: "職業" })).toBeChecked();
     await page.getByLabel("家庭").fill("已婚，一個仔讀小學");
     await page.getByLabel("A 點（現況）").fill("冇保障");
     for (const l of ["客人喜歡和信任你", "客人有穩定收入或淨資產", "客人與你有交情／共同經歷", "了解到客人的現況與目標"]) {
@@ -95,6 +103,8 @@ test.describe.serial("權限隔離", () => {
     await expect(page.getByText("已儲存")).toBeVisible();
 
     await page.reload();
+    await expect(occupation).toHaveValue("資深會計師");
+    await expect(page.getByLabel("家庭")).toHaveValue("已婚，一個仔讀小學");
     await page.getByRole("tab", { name: "Needs" }).click();
     await expect(page.getByLabel("醫療保險", { exact: true })).toBeChecked();
     await page.getByRole("tab", { name: "Closing", exact: true }).click();
