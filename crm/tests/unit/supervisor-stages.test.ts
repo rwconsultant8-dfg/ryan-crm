@@ -1,0 +1,20 @@
+import React from "react";
+import {renderToStaticMarkup} from "react-dom/server";
+import {afterEach,beforeEach,describe,it,expect,vi} from "vitest";
+const mocks=vi.hoisted(()=>({auth:vi.fn()}));
+vi.mock("@/lib/auth",()=>({requireAdmin:mocks.auth,displayName:(p:{full_name:string;email:string})=>p.full_name||p.email}));
+vi.mock("@/lib/profile-avatar",()=>({getProfileAvatar:async()=>null}));
+vi.mock("@/lib/planner-data",()=>({loadFollowups:async()=>[]}));
+vi.mock("@/lib/activity-data",()=>({loadTeamCalendarEntries:async()=>[]}));
+vi.mock("@/lib/coaching/store",()=>({loadCoaching:async()=>[]}));
+vi.mock("next/link",()=>({default:({href,children,...props}:{href:string;children:React.ReactNode})=>React.createElement("a",{href,...props},children)}));
+import AdminOverview from "@/app/(app)/admin/page";
+import {STAGES,isStage} from "@/lib/stages";
+import {extractionSchema} from "@/lib/whatsapp/schema";
+const oldStages=["RR","NR1","NR2","FNA","PC","SIGNED","ISSUED"];
+beforeEach(()=>{vi.stubGlobal("React",React);vi.stubEnv("DATA_ENCRYPTION_KEY",Buffer.alloc(32,1).toString("base64"));const rows=oldStages.map((stage,i)=>({id:`client-${i}`,owner_id:"staff",stage,info:{},ready_to_sign:false}));mocks.auth.mockResolvedValue({profile:{id:"admin",full_name:"Ryan",email:"ryan@example.test",role:"admin",active:true},supabase:{from:(table:string)=>({select:()=>({order(){return this;},range:async()=>({data:table==="profiles"?[{id:"staff",full_name:"測試同事",email:"test@example.com",role:"agent",active:true}]:rows,error:null}),then(resolve:any){return Promise.resolve({data:table==="profiles"?[{id:"staff",full_name:"測試同事",email:"test@example.com",role:"agent",active:true}]:rows,error:null}).then(resolve);}})})}});});
+afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs();});
+describe("主管總覽與新客戶分類",()=>{
+ it("renders exactly the agreed five columns and folds every historical client into them",async()=>{const html=renderToStaticMarkup(await AdminOverview({searchParams:Promise.resolve({})}));for(const text of ["Fact Finding","Needs","Presentation","Closing","Referral service"])expect(html).toContain(text);expect(html).not.toMatch(/\b(RR|NR1|NR2|FNA|PC)\b/);const body=html.match(/<tbody>([\s\S]*?)<\/tbody>/)![1];const counts=[...body.matchAll(/<td class="num"[^>]*>(\d+)<\/td>/g)].map(m=>Number(m[1])).slice(0,5);expect(counts).toEqual([2,2,1,1,1]);expect(counts.reduce((a,b)=>a+b,0)).toBe(7);});
+ it("exposes only five new stage choices to forms and bot extraction",()=>{expect(STAGES.map(s=>s.key)).toEqual(["MEETING","FOLLOWUP","PROPOSAL","SIGNED","ISSUED"]);for(const stage of oldStages.slice(0,5)){expect(isStage(stage)).toBe(false);expect(extractionSchema.shape.stage.safeParse(stage).success).toBe(false);}expect(extractionSchema.shape.stage.safeParse("FOLLOWUP").success).toBe(true);});
+});

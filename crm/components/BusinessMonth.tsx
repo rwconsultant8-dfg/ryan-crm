@@ -186,7 +186,7 @@ export default function BusinessMonth({
       <details className="card biz-target" open={targetOpenInit}>
         <summary>
           <b>本月目標（Target）</b>
-          <span className="muted small"> — 撳開設定</span>
+          <span className="muted small"> — {readOnly ? "撳開查看" : "撳開設定"}</span>
         </summary>
         <div className="biz-target-grid">
           <label className="field">

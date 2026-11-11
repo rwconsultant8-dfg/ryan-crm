@@ -1,10 +1,13 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { decryptColumn } from "./secure";
-import { NO_SEASON, type SeasonColumn } from "./seasons";
-import { CHECK_KEYS, FORMS, type Checks, type FormColumn, type Stage } from "./stages";
+import { seasonForStage, type SeasonColumn } from "./seasons";
+import { nextClientStep, type CalendarEntry } from "./followups";
+import { hkToday } from "./weeks";
+import type { Task } from "./planner";
+import { CHECK_KEYS, FORMS, normalizeStage, type Checks, type FormColumn, type Stage } from "./stages";
 
-export type ClientInfo = { name: string; age: string; gender: string; occupation: string; marital: string };
+export type ClientInfo = { name: string; age: string; gender: string; occupation: string; marital: string; customer_type?: string; last_contact_at?: string; contact_history?:string };
 
 export type ClientCard = {
   id: string;
@@ -34,6 +37,9 @@ function toInfo(id: string, enc: unknown): ClientInfo {
     gender: p.gender ?? "",
     occupation: p.occupation ?? "",
     marital: p.marital ?? "",
+    customer_type: p.customer_type ?? "",
+    last_contact_at: p.last_contact_at || undefined,
+    contact_history:p.contact_history || undefined,
   };
 }
 
@@ -42,8 +48,8 @@ function toCard(r: Row): ClientCard {
   return {
     id: r.id,
     owner_id: r.owner_id as string,
-    stage: r.stage as Stage,
-    season: ((r.season as string | null) ?? NO_SEASON) as SeasonColumn,
+    stage: normalizeStage(r.stage),
+    season: seasonForStage(r.stage as Stage),
     ready_to_sign: Boolean(r.ready_to_sign),
     checks,
     info: toInfo(r.id, r.info),
@@ -53,11 +59,15 @@ function toCard(r: Row): ClientCard {
 
 /** RLS 決定睇到邊啲：員工淨係自己；管理員全部（可用 ownerId 篩選） */
 export async function listClientCards(supabase: SupabaseClient, ownerId?: string): Promise<ClientCard[]> {
-  let q = supabase.from("clients").select(CARD_COLS).order("updated_at", { ascending: false });
-  if (ownerId) q = q.eq("owner_id", ownerId);
-  const { data, error } = await q;
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as unknown as Row[]).map(toCard);
+  const cards:ClientCard[]=[];
+  for(let offset=0;;offset+=500){
+    let q=supabase.from("clients").select(CARD_COLS).order("updated_at",{ascending:false}).order("id").range(offset,offset+499);
+    if(ownerId)q=q.eq("owner_id",ownerId);
+    const {data,error}=await q;
+    if(error)throw new Error(error.message);
+    cards.push(...((data??[]) as unknown as Row[]).map(toCard));
+    if(!data||data.length<500)return cards;
+  }
 }
 
 export async function getClientFull(supabase: SupabaseClient, id: string): Promise<ClientFull | null> {
@@ -70,7 +80,7 @@ export async function getClientFull(supabase: SupabaseClient, id: string): Promi
   return { ...toCard(r), forms, created_at: r.created_at as string };
 }
 
-export function toBoardCards(cards: ClientCard[]) {
+export function toBoardCards(cards: ClientCard[], tasks?: Task[], appointments?: CalendarEntry[]) {
   return cards.map((c) => ({
     id: c.id,
     stage: c.stage,
@@ -81,5 +91,8 @@ export function toBoardCards(cards: ClientCard[]) {
     age: c.info.age,
     gender: c.info.gender,
     occupation: c.info.occupation,
+    customerType: c.info.customer_type,
+    lastContact: c.info.last_contact_at,
+    next: tasks && appointments ? nextClientStep(tasks.filter(t=>t.owner_id===c.owner_id),appointments.filter(a=>!("owner_id" in a)||a.owner_id===c.owner_id),c.id,hkToday()) : undefined,
   }));
 }

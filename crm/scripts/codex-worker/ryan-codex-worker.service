@@ -1,0 +1,17 @@
+[Unit]
+Description=Ryan CRM private Codex extraction worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/telegram-ai
+ExecStart=/usr/bin/python3 /root/telegram-ai/codex-worker/worker.py --config /root/telegram-ai/ryan-codex-worker.json
+Restart=on-failure
+RestartSec=15
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

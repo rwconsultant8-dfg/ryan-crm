@@ -39,6 +39,38 @@ export const pct = (done: number, target: number) => (target > 0 ? Math.round((d
 
 export const hkd = (n: number) => `$${n.toLocaleString("en-HK", { maximumFractionDigits: 2 })}`;
 
+export const BUSINESS_SORTS = [
+  { value: "afyp_desc", label: "AFYP：高至低" },
+  { value: "afyp_asc", label: "AFYP：低至高" },
+  { value: "revenue_desc", label: "Revenue：高至低" },
+  { value: "commission_desc", label: "佣金：高至低" },
+  { value: "cases_desc", label: "Case 數：多至少" },
+  { value: "name_asc", label: "名稱" },
+] as const;
+export type BusinessSort = (typeof BUSINESS_SORTS)[number]["value"];
+export const businessSort = (value: unknown): BusinessSort =>
+  BUSINESS_SORTS.find((option) => option.value === value)?.value ?? "afyp_desc";
+
+export function sortBusinessRows<T extends Money & { name: string; cases?: number }>(rows: T[], sort: BusinessSort): T[] {
+  return [...rows].sort((a, b) => {
+    const byName = () => a.name.localeCompare(b.name, "zh-HK");
+    if (sort === "name_asc") return byName();
+    if (sort === "cases_desc") return (b.cases ?? 0) - (a.cases ?? 0) || byName();
+    const key = sort === "revenue_desc" ? "revenue" : sort === "commission_desc" ? "commission" : "afyp";
+    return (sort === "afyp_asc" ? a[key] - b[key] : b[key] - a[key]) || byName();
+  });
+}
+
+export function sumTargets(rows: Target[]): Target {
+  const sum = emptyTarget();
+  for (const row of rows) {
+    sum.cases += row.cases;
+    for (const key of MONEY_KEYS) sum[key] += row[key];
+  }
+  for (const key of MONEY_KEYS) sum[key] = Math.round(sum[key] * 100) / 100;
+  return sum;
+}
+
 /** 「12,000」「1.2萬」「$3,000」→ 數字；唔識讀就 null */
 export function parseAmount(v: string): number | null {
   const s = v.replace(/[,\s$HK]/gi, "");

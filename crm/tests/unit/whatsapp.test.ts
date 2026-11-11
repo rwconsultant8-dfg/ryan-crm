@@ -33,11 +33,11 @@ describe("配對客戶", () => {
 });
 
 describe("草稿", () => {
-  it("冇客又冇活動 → 冇內容", () => {
+  it("舊活動計分唔再視為可以儲存嘅內容", () => {
     expect(hasContent({ texts: ["hi"], today: "2026-10-10", extraction: empty, target: { mode: "none" } })).toBe(false);
     expect(
       hasContent({ texts: ["x"], today: "2026-10-10", extraction: { ...empty, activity: { ...empty.activity, r: 1 } }, target: { mode: "none" } }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("確認訊息列出會寫入嘅內容", () => {
@@ -56,10 +56,12 @@ describe("草稿", () => {
     };
     const msg = describeDraft(d);
     expect(msg).toContain("何志強（🆕 新客，40歲・男・工程師・已婚）");
-    expect(msg).toContain("【RR・1) 家庭】\n・已婚，兩個女");
+    expect(msg).toContain("【了解客戶・1) 家庭】\n・已婚，兩個女");
     expect(msg).toContain("✅ 簽單條件：客人喜歡和信任你");
-    expect(msg).toContain("📊 活動（10/10）：A+1、RR+1");
-    expect(msg).toContain("🍽 午餐約會：何生 中環");
+    expect(msg).toContain("📅 日曆（10/10）");
+    expect(msg).not.toContain("A+1");
+    expect(msg).not.toContain("RR+1");
+    expect(msg).toContain("🍽 午餐 appointment：何生 中環");
     expect(msg).toContain("回覆「確認」儲存");
   });
 });

@@ -134,7 +134,7 @@ test.describe.serial("WhatsApp 助手", () => {
     await sendWa(page, AMY_PHONE, `今日同${NAME}食午餐，40歲工程師，已婚兩個女，好信任我`);
     const reply = await waitReply(AMY_PHONE, "幫你整理咗");
     expect(reply).toContain(`${NAME}（🆕 新客，40歲・男・工程師・已婚）`);
-    expect(reply).toContain("【RR・1) 家庭】");
+    expect(reply).toContain("【了解客戶・1) 家庭】");
     expect(reply).toContain("A+1、RR+1");
 
     // AI 請求用咗 structured outputs 同 fallback
@@ -156,7 +156,7 @@ test.describe.serial("WhatsApp 助手", () => {
     await page.getByTestId("client-card").filter({ hasText: NAME }).click();
     await page.waitForURL(/\/clients\//);
     await expect(page.getByTestId("ready-box")).toContainText("簽單條件 1/8");
-    await page.getByRole("tab", { name: "RR" }).click();
+    await page.getByRole("tab", { name: "相約見面" }).click();
     await expect(page.getByLabel("家庭")).toHaveValue(/・已婚，兩個女/);
     await page.getByText(/^修改記錄/).click();
     await expect(page.getByText("WhatsApp").first()).toBeVisible();
@@ -164,7 +164,7 @@ test.describe.serial("WhatsApp 助手", () => {
 
   test("補充同一個客 → 長文字加喺後面、數字直接更新", async ({ page }) => {
     await sendWa(page, AMY_PHONE, `補充：${NAME} 月入8萬`);
-    const reply = await waitReply(AMY_PHONE, "【FNA・收入（每月 HK$）】");
+    const reply = await waitReply(AMY_PHONE, "【財務分析・收入（每月 HK$）】");
     expect(reply).toContain(`客戶：${NAME}`);
     expect(reply).not.toContain("新客");
     await sendWa(page, AMY_PHONE, "確認");
@@ -174,9 +174,9 @@ test.describe.serial("WhatsApp 助手", () => {
     await page.goto("/board");
     await page.getByTestId("client-card").filter({ hasText: NAME }).click();
     await page.waitForURL(/\/clients\//);
-    await page.getByRole("tab", { name: "FNA" }).click();
+    await page.getByRole("tab", { name: "深化跟進" }).click();
     await expect(page.getByLabel("收入（每月 HK$）")).toHaveValue("80000");
-    await page.getByRole("tab", { name: "RR" }).click();
+    await page.getByRole("tab", { name: "相約見面" }).click();
     await expect(page.getByLabel("家庭")).toHaveValue(/・已婚，兩個女/); // 舊內容仲喺度
     await expect(page.getByLabel("財務情況")).toHaveValue(/・月入 8 萬/);
   });

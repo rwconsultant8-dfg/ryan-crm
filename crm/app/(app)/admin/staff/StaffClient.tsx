@@ -1,9 +1,9 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { createStaffAction, renameAction, resetPasswordAction, setActiveAction, setWhatsappAction, type StaffResult } from "./actions";
+import { createStaffAction, renameAction, resetPasswordAction, setActiveAction, setTelegramAction, type StaffResult } from "./actions";
 
-type Staff = { id: string; email: string; full_name: string; role: string; active: boolean; whatsapp: string | null };
+type Staff = { id: string; email: string; full_name: string; role: string; active: boolean; telegram_id: string | null };
 
 function randomPassword() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
@@ -60,7 +60,7 @@ export function StaffTable({ staff, meId }: { staff: Staff[]; meId: string }) {
             <tr>
               <th>姓名</th>
               <th>電郵</th>
-              <th>WhatsApp</th>
+              <th>Telegram</th>
               <th>角色</th>
               <th>狀態</th>
               <th>操作</th>
@@ -75,13 +75,13 @@ export function StaffTable({ staff, meId }: { staff: Staff[]; meId: string }) {
                   <button
                     className="btn btn-sm"
                     disabled={pending}
-                    title="設定 WhatsApp 號碼（用嚟同 WhatsApp 助手對話）"
+                    title="綁定員工嘅 Telegram 帳戶 ID"
                     onClick={() => {
-                      const v = prompt("WhatsApp 號碼（香港號碼打 8 位數；其他地區連國家碼）。留空 = 清除", s.whatsapp ?? "");
-                      if (v !== null) run(() => setWhatsappAction(s.id, v));
+                      const v = prompt("Telegram 數字帳戶 ID（由員工私訊助手 /start 取得）。留空 = 解除綁定", s.telegram_id ?? "");
+                      if (v !== null) run(() => setTelegramAction(s.id, v));
                     }}
                   >
-                    {s.whatsapp ? `+${s.whatsapp}` : "設定"}
+                    {s.telegram_id ? s.telegram_id : "設定"}
                   </button>
                 </td>
                 <td>{s.role === "admin" ? "主管" : "員工"}</td>

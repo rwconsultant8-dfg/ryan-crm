@@ -1,18 +1,21 @@
 import Link from "next/link";
 import ActivityWeek from "@/components/ActivityWeek";
 import { requireUser, displayName } from "@/lib/auth";
+import {isCalendarTask} from "@/lib/calendar-tasks";
+import { loadFollowups } from "@/lib/planner-data";
+import { listClientCards } from "@/lib/data";
 import { loadWeek } from "@/lib/activity-data";
 import { resolveViewedOwner } from "@/lib/viewing";
 import { addDays, hkToday, isDate, isoWeek, mondayOf, shortDate } from "@/lib/weeks";
 
-export default async function ActivityPage({ searchParams }: { searchParams: Promise<{ week?: string; agent?: string }> }) {
+export default async function ActivityPage({ searchParams }: { searchParams: Promise<{ week?: string; agent?: string; client?: string }> }) {
   const sp = await searchParams;
   const { supabase, profile } = await requireUser();
   const { owner, readOnly } = await resolveViewedOwner(supabase, profile, sp.agent);
 
   const today = hkToday();
   const monday = mondayOf(isDate(sp.week) ? sp.week : today);
-  const days = await loadWeek(supabase, owner.id, monday);
+  const [days, cards, allTasks] = await Promise.all([loadWeek(supabase, owner.id, monday),listClientCards(supabase,owner.id),loadFollowups(supabase,owner.id)]);
   const wk = isoWeek(monday);
   const q = (w: string) => `/activity?week=${w}${readOnly ? `&agent=${owner.id}` : ""}`;
 
@@ -24,7 +27,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
         </p>
       )}
       <div className="row" style={{ marginBottom: 8 }}>
-        <h1 style={{ margin: 0 }}>{readOnly ? `${displayName(owner)} 嘅每週活動分` : "每週活動分（WARS）"}</h1>
+        <h1 style={{ margin: 0 }}>{readOnly ? `${displayName(owner)} 嘅日曆` : "日曆"}</h1>
       </div>
       {readOnly && <p className="notice">👁 唯讀</p>}
       <div className="row" style={{ marginBottom: 12 }}>
@@ -43,7 +46,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
           </Link>
         )}
       </div>
-      <ActivityWeek key={`${owner.id}:${monday}`} days={days} today={today} readOnly={readOnly} />
+      <ActivityWeek key={`${owner.id}:${monday}`} days={days} today={today} readOnly={readOnly} clients={cards.map(c=>({id:c.id,name:c.info.name}))} initialClient={cards.some(c=>c.id===sp.client) ? sp.client : ""} tasks={allTasks.filter(isCalendarTask)} ownerQuery={readOnly ? `&agent=${owner.id}` : ""} />
     </>
   );
 }

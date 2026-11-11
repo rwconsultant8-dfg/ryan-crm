@@ -52,7 +52,7 @@ test.describe.serial("權限隔離", () => {
 
     await expect(page.getByTestId("ready-box")).toContainText("仲差 8 格");
 
-    await page.getByRole("tab", { name: "RR" }).click();
+    await page.getByRole("tab", { name: "相約見面" }).click();
     await page.getByLabel("家庭").fill("已婚，一個仔讀小學");
     await page.getByLabel("A 點（現況）").fill("冇保障");
     for (const l of ["客人喜歡和信任你", "客人有穩定收入或淨資產", "客人與你有交情／共同經歷", "了解到客人的現況與目標"]) {
@@ -62,7 +62,7 @@ test.describe.serial("權限隔離", () => {
     await expect(page.getByText("已儲存")).toBeVisible();
     await expect(page.getByTestId("ready-box")).toContainText("仲差 4 格");
 
-    await page.getByRole("tab", { name: "NR2" }).click();
+    await page.getByRole("tab", { name: "深化跟進" }).click();
     for (const l of ["確認客人的需要", "預演計劃相關內容", "確立客人預算金額", "確定下次會面時間"]) {
       await page.getByLabel(l, { exact: true }).check();
     }
@@ -70,7 +70,7 @@ test.describe.serial("權限隔離", () => {
     await expect(page.getByText("已儲存")).toBeVisible();
     await expect(page.getByTestId("ready-box")).toContainText("具備簽單條件");
 
-    await page.getByRole("tab", { name: "FNA" }).click();
+    await page.getByRole("tab", { name: "深化跟進" }).click();
     await page.getByLabel("收入（每月 HK$）").fill("50000");
     await page.getByLabel("支出（每月 HK$）").fill("32000");
     await expect(page.getByText("HK$ 18,000")).toBeVisible();
@@ -85,14 +85,14 @@ test.describe.serial("權限隔離", () => {
     await page.goto("/board");
     const card = page.getByTestId("client-card").filter({ hasText: CLIENT_1 });
     await expect(card).toContainText("具備簽單條件");
-    await expect(page.locator('[data-stage="RR"]')).toContainText(CLIENT_1);
+    await expect(page.locator('[data-stage="MEETING"]')).toContainText(CLIENT_1);
   });
 
   test("員工 A 拖拉卡片轉階段", async ({ page }) => {
     await login(page, A);
     await page.goto("/board");
     const card = page.getByTestId("client-card").filter({ hasText: CLIENT_2 });
-    const target = page.locator('[data-stage="NR1"]');
+    const target = page.locator('[data-stage="FOLLOWUP"]');
     const from = (await card.boundingBox())!;
     const to = (await target.boundingBox())!;
     await page.mouse.move(from.x + 20, from.y + 15);
@@ -104,10 +104,10 @@ test.describe.serial("權限隔離", () => {
     await expect(target).toContainText(CLIENT_2);
     await saved;
     await page.reload();
-    await expect(page.locator('[data-stage="NR1"]')).toContainText(CLIENT_2);
+    await expect(page.locator('[data-stage="FOLLOWUP"]')).toContainText(CLIENT_2);
   });
 
-  test("員工 A 喺四季頁拖拉客人", async ({ page }) => {
+  test("員工 A 喺人脈網拖拉客人", async ({ page }) => {
     await login(page, A);
     await page.goto("/seasons");
     await expect(page.locator('[data-stage="NONE"]')).toContainText(CLIENT_1);
@@ -128,8 +128,8 @@ test.describe.serial("權限隔離", () => {
     // 客戶頁顯示同一個季節，亦可以用選單改
     await page.getByTestId("client-card").filter({ hasText: CLIENT_2 }).click();
     await page.waitForURL(/\/clients\//);
-    await page.getByLabel("四季").selectOption("AUTUMN");
-    await expect(page.getByText("已更新四季")).toBeVisible();
+    await page.getByLabel("人脈分類").selectOption("AUTUMN");
+    await expect(page.getByText("已更新人脈分類")).toBeVisible();
     await page.goto("/seasons");
     await expect(page.locator('[data-stage="AUTUMN"]')).toContainText(CLIENT_2);
   });
@@ -177,10 +177,10 @@ test.describe.serial("權限隔離", () => {
     await expect(page.getByText("唯讀模式")).toBeVisible();
     await expect(page.getByLabel("姓名 *")).toBeDisabled();
     await expect(page.getByRole("button", { name: "儲存" })).toHaveCount(0);
-    await page.getByRole("tab", { name: "RR" }).click();
+    await page.getByRole("tab", { name: "相約見面" }).click();
     await expect(page.getByLabel("家庭")).toHaveValue("已婚，一個仔讀小學");
     await page.getByText(/^修改記錄/).click();
-    await expect(page.getByText("RR・1) 家庭").first()).toBeVisible(); // 修改記錄
+    await expect(page.getByText("了解客戶・1) 家庭").first()).toBeVisible(); // 修改記錄
 
     const sb = await apiAs(ADMIN);
     const { data: upd } = await sb.from("clients").update({ stage: "ISSUED" }).eq("id", client1Id).select("id");
@@ -198,19 +198,19 @@ test.describe.serial("權限隔離", () => {
     await expect(page.getByText(`客戶：${CLIENT_1}`).first()).toBeVisible();
   });
 
-  test("活動分：員工 A 記活動、自動計分、約會加密儲存", async ({ page }) => {
+  test("活動分：員工 A 記活動、自動計分、 appointment加密儲存", async ({ page }) => {
     await login(page, A);
     await page.goto(`/activity?week=${WEEK}`);
     await page.getByLabel("星期一 A", { exact: true }).fill("3");
     await page.getByLabel("星期一 N", { exact: true }).fill("1");
-    await page.getByLabel("星期一 午餐約會").fill(`${CLIENT_1} 中環`);
+    await page.getByLabel("星期一 午餐 appointment").fill(`${CLIENT_1} 中環`);
     await expect(page.getByTestId("week-summary").getByTestId("kpi")).toContainText("11 分 · 紅");
     await page.getByRole("button", { name: "儲存", exact: true }).click();
     await expect(page.getByText("已儲存")).toBeVisible();
     await page.reload();
     await expect(page.getByLabel("星期一 A", { exact: true })).toHaveValue("3");
     await expect(page.getByLabel("星期一 N", { exact: true })).toHaveValue("1");
-    await expect(page.getByLabel("星期一 午餐約會")).toHaveValue(`${CLIENT_1} 中環`);
+    await expect(page.getByLabel("星期一 午餐 appointment")).toHaveValue(`${CLIENT_1} 中環`);
     await expect(page.getByTestId("week-summary").getByTestId("kpi")).toContainText("11 分 · 紅");
 
     // PDCA：嗰週分數自動帶入，寫焦點
@@ -231,7 +231,7 @@ test.describe.serial("權限隔離", () => {
   test("活動分／PDCA：員工 B 睇唔到員工 A；主管可以唯讀睇 A 嘅活動分", async ({ page }) => {
     await login(page, B);
     await page.goto(`/activity?week=${WEEK}`);
-    await expect(page.getByLabel("星期一 午餐約會")).not.toHaveValue(`${CLIENT_1} 中環`);
+    await expect(page.getByLabel("星期一 午餐 appointment")).not.toHaveValue(`${CLIENT_1} 中環`);
     await page.goto("/pdca?year=2025&q=1");
     await expect(page.locator("textarea").filter({ hasText: `開口${stamp}個人` })).toHaveCount(0);
     const sb = await apiAs(B);

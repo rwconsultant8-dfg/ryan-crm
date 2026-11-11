@@ -1,28 +1,23 @@
 "use client";
+import {ageLabel} from "@/lib/age";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
-import { deleteClientAction, moveSeasonAction, moveStageAction, saveFormAction, updateInfoAction, type ActionResult } from "@/app/(app)/clients/actions";
+import { useEffect, useState, useTransition } from "react";
+import { deleteClientAction, moveStageAction, saveFormAction, updateInfoAction, type ActionResult } from "@/app/(app)/clients/actions";
 import InfoFields from "./InfoFields";
-import { NO_SEASON, SEASONS, type SeasonColumn } from "@/lib/seasons";
+import { CLIENT_FORMS, factFindingChecklist, historicalFormEntries, pointFormLines } from "@/lib/client-forms";
+import { type SeasonColumn } from "@/lib/seasons";
 import {
-  FORMS,
   GENDERS,
   MARITAL,
-  MEETING_TIPS,
   formFieldKeys,
   STAGES,
-  fnaSummary,
-  missingChecks,
-  type CheckKey,
   type Checks,
-  type Field,
   type FormColumn,
-  type FormDef,
   type Stage,
 } from "@/lib/stages";
 
-type Info = { name: string; age: string; gender: string; occupation: string; marital: string };
+type Info = { name: string; age: string; gender: string; occupation: string; marital: string; customer_type?: string };
 
 export type EditorClient = {
   id: string;
@@ -33,52 +28,90 @@ export type EditorClient = {
   forms: Record<FormColumn, Record<string, string>>;
 };
 
-type Tab = "info" | FormColumn;
+type Tab = "info" | Stage;
+type DirtyKey = "info" | FormColumn;
 
-const money = (n: number | null) =>
-  n === null ? "—" : `HK$ ${n.toLocaleString("en-HK", { maximumFractionDigits: 2 })}`;
-
-function FieldInput({
-  f,
-  value,
-  onChange,
-  disabled,
-}: {
-  f: Field;
-  value: string;
-  onChange: (v: string) => void;
-  disabled: boolean;
+export function ClientStageForm({ phase, forms, info = {}, readOnly, onChange }: {
+  phase: Stage;
+  forms: EditorClient["forms"];
+  info?: Record<string, string | undefined>;
+  readOnly: boolean;
+  onChange: (column: FormColumn, key: string, value: string) => void;
 }) {
-  if (f.type === "rating") {
-    return (
-      <div className="rating" role="radiogroup" aria-label={f.label}>
-        {Array.from({ length: 10 }, (_, i) => String(i + 1)).map((n) => (
-          <button
-            type="button"
-            key={n}
-            className={value === n ? "on" : undefined}
-            disabled={disabled}
-            aria-pressed={value === n}
-            onClick={() => onChange(value === n ? "" : n)}
-          >
-            {n}
-          </button>
-        ))}
-      </div>
-    );
-  }
-  if (f.type === "text" || f.type === "number" || f.type === "date") {
-    return (
-      <input
-        type={f.type === "number" ? "text" : f.type}
-        inputMode={f.type === "number" ? "decimal" : undefined}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    );
-  }
-  return <textarea rows={2} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />;
+  const history = historicalFormEntries(phase, forms);
+  const checklist = phase === "MEETING" ? factFindingChecklist(info, forms) : [];
+  return (
+    <>
+      {phase === "MEETING" && (
+        <section className="client-fact-checklist" aria-label="Fact Finding 資料 checklist">
+          <h2>資料 checklist</h2>
+          <p className="muted small">已填資料會自動打 tick · {checklist.filter((item) => item.complete).length} / {checklist.length}</p>
+          <ul className="client-check-grid">
+            {checklist.map((item) => (
+              <li key={item.key} className={item.complete ? "complete" : ""}>
+                <span aria-hidden="true">{item.complete ? "☑️" : "☐"}</span>
+                <span>{item.label}<span className="sr-only">：{item.complete ? "已有資料" : "未填資料"}</span></span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {CLIENT_FORMS.filter((def) => def.phase === phase).map((def) => (
+        <section key={def.column} className="client-form-group">
+          <h2 style={{ marginTop: 0 }}>{def.title}</h2>
+          <p className="muted small">{def.timing}</p>
+          {def.sections.map((section, index) => (
+            <fieldset key={index} className={`client-simple-fields client-fieldset${section.fields.every((field) => field.type === "checkbox") ? " client-product-options" : ""}`}>
+              {section.title && <legend>{section.title}</legend>}
+              {section.note && <p className="muted small">{section.note}</p>}
+              {section.fields.map((field) => (
+                field.type === "checkbox" ? (
+                  <label className="client-product-option" key={field.key}>
+                    <input type="checkbox" checked={forms[def.column]?.[field.key] === "true"} disabled={readOnly}
+                      onChange={(event) => onChange(def.column, field.key, event.target.checked ? "true" : "")} />
+                    <span>{field.label}</span>
+                  </label>
+                ) : <div className="field" key={field.key}>
+                <label htmlFor={`client-${def.column}-${field.key}`}>
+                  <span>{field.label}</span>
+                </label>
+                  {field.hint && <p className="muted small" id={`client-hint-${field.key}`}>{field.hint}</p>}
+                  <textarea
+                    id={`client-${def.column}-${field.key}`}
+                    aria-describedby={field.hint ? `client-hint-${field.key}` : undefined}
+                    rows={field.type === "points" ? 6 : field.key === "notes" ? 8 : 3}
+                    placeholder={field.type === "points" ? "每行一項留意事項" : undefined}
+                    maxLength={5000}
+                    value={forms[def.column]?.[field.key] ?? ""}
+                    disabled={readOnly}
+                    onChange={(event) => onChange(def.column, field.key, event.target.value)}
+                  />
+                  {field.type === "points" && pointFormLines(forms[def.column]?.[field.key] ?? "").length > 0 && (
+                    <ul className="client-point-list" aria-label={`${field.label}逐點顯示`}>
+                      {pointFormLines(forms[def.column]?.[field.key] ?? "").map((line, lineIndex) => <li key={lineIndex}>{line}</li>)}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </fieldset>
+          ))}
+        </section>
+      ))}
+      {history.length > 0 && (
+        <details className="history">
+          <summary>過往記錄（{history.length}）</summary>
+          <dl className="client-form-history">
+            {history.map((entry) => (
+              <div key={entry.key}>
+                <dt className="muted small">{entry.label}</dt>
+                <dd>{entry.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      )}
+    </>
+  );
 }
 
 export default function ClientEditor({ client, readOnly }: { client: EditorClient; readOnly: boolean }) {
@@ -86,10 +119,8 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
   const [tab, setTab] = useState<Tab>("info");
   const [info, setInfo] = useState<Info>(client.info);
   const [forms, setForms] = useState(client.forms);
-  const [checks, setChecks] = useState<Checks>(client.checks);
   const [stage, setStage] = useState<Stage>(client.stage);
-  const [season, setSeason] = useState<SeasonColumn>(client.season);
-  const [dirty, setDirty] = useState<Set<Tab>>(new Set());
+  const [dirty, setDirty] = useState<Map<DirtyKey, Set<string>>>(new Map());
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -101,11 +132,11 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
     return () => window.removeEventListener("beforeunload", h);
   }, [dirty]);
 
-  const markDirty = (t: Tab) => setDirty((d) => new Set(d).add(t));
-  const missing = useMemo(() => missingChecks(checks), [checks]);
-  const ready = missing.length === 0;
-  const checksDirty = dirty.has("form_rr") || dirty.has("form_nr2");
-
+  const markDirty = (t: DirtyKey, key: string) => setDirty((d) => {
+    const next = new Map(d);
+    next.set(t, new Set(d.get(t)).add(key));
+    return next;
+  });
   const run = (fn: () => Promise<ActionResult>, onOk?: () => void) => {
     setMsg(null);
     startTransition(async () => {
@@ -120,28 +151,37 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
     });
   };
 
-  const clearDirty = (t: Tab) =>
+  const clearDirty = (t: DirtyKey, keys?: string[]) =>
     setDirty((d) => {
-      const n = new Set(d);
-      n.delete(t);
+      const n = new Map(d);
+      if (keys) {
+        const remaining = new Set(d.get(t));
+        for (const key of keys) remaining.delete(key);
+        if (remaining.size) n.set(t, remaining);
+        else n.delete(t);
+      } else n.delete(t);
       return n;
     });
 
   const save = () => {
     if (tab === "info") {
-      run(() => updateInfoAction(client.id, info), () => clearDirty("info"));
+      const changed = Object.fromEntries([...(dirty.get("info") ?? [])].map((key) => [key, info[key as keyof Info] ?? ""]));
+      run(() => updateInfoAction(client.id, changed), () => clearDirty("info"));
       return;
     }
-    const def = FORMS.find((f) => f.column === tab)!;
-    const cs: Partial<Record<CheckKey, boolean>> = {};
-    for (const c of def.checks?.items ?? []) cs[c.key] = checks[c.key];
-    run(() => saveFormAction(client.id, def.stage, forms[tab], cs), () => clearDirty(tab));
+    const changed = CLIENT_FORMS.filter((f) => f.phase === tab && formFieldKeys(f).some((key) => dirty.get(f.column)?.has(key)));
+    run(async () => {
+      for (const def of changed) {
+        const values = Object.fromEntries(formFieldKeys(def).filter((key) => dirty.get(def.column)?.has(key)).map((key) => [key, forms[def.column]?.[key] ?? ""]));
+        const result = await saveFormAction(client.id, def.stage, values, {});
+        if (!result.ok) return result;
+        clearDirty(def.column, Object.keys(values));
+      }
+      return { ok: true };
+    });
   };
 
   const changeStage = (to: Stage) => {
-    if ((to === "SIGNED" || to === "ISSUED") && !ready) {
-      if (!window.confirm(`仲差 ${missing.length} 格先具備簽單條件，確定移去「${STAGES.find((s) => s.key === to)?.short}」？`)) return;
-    }
     const prev = stage;
     setStage(to);
     setMsg(null);
@@ -157,22 +197,6 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
     });
   };
 
-  const changeSeason = (to: SeasonColumn) => {
-    const prev = season;
-    setSeason(to);
-    setMsg(null);
-    startTransition(async () => {
-      const res = await moveSeasonAction(client.id, to === NO_SEASON ? null : to);
-      if (!res.ok) {
-        setSeason(prev);
-        setMsg({ ok: false, text: res.error });
-      } else {
-        setMsg({ ok: true, text: "已更新四季" });
-        router.refresh();
-      }
-    });
-  };
-
   const remove = () => {
     if (!window.confirm(`確定永久刪除「${client.info.name}」？刪除後無法復原（審計記錄會保留刪除紀錄）。`)) return;
     run(() => deleteClientAction(client.id));
@@ -180,105 +204,19 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
 
   const setField = (col: FormColumn, key: string, v: string) => {
     setForms((f) => ({ ...f, [col]: { ...f[col], [key]: v } }));
-    markDirty(col);
+    markDirty(col, key);
   };
 
-  const renderForm = (def: FormDef) => {
-    const values = forms[def.column] ?? {};
-    const fna = def.stage === "FNA" ? fnaSummary(values) : null;
-    return (
-      <div>
-        <p className="muted small" style={{ marginTop: 0 }}>
-          <b>{def.title}</b> — {def.timing}
-        </p>
-        {def.tips && (
-          <ul className="form-tips">
-            {def.tips.map((t) => (
-              <li key={t}>＊{t}</li>
-            ))}
-          </ul>
-        )}
-        {def.sections.map((s, i) => (
-          <section key={i} className="form-section">
-            {s.title && <h3>{s.title}</h3>}
-            {s.note && <div className="section-note">{s.note}</div>}
-            <div className={s.fields.some((f) => f.type === "rating") ? undefined : "form-grid"}>
-            {s.fields.map((f) => (
-              <label className="field" key={f.key}>
-                <span>
-                  {f.label}
-                  {f.hint && <em className="field-hint">{f.hint}</em>}
-                </span>
-                <FieldInput f={f} value={values[f.key] ?? ""} disabled={readOnly} onChange={(v) => setField(def.column, f.key, v)} />
-              </label>
-            ))}
-            </div>
-          </section>
-        ))}
-        {fna && (
-          <div className="calc">
-            <div className="stat">
-              每月現金流（收入－支出）
-              <b className={fna.cashflow !== null && fna.cashflow < 0 ? "neg" : "pos"}>{money(fna.cashflow)}</b>
-            </div>
-            <div className="stat">
-              淨資產（資產－負債）
-              <b className={fna.netWorth !== null && fna.netWorth < 0 ? "neg" : "pos"}>{money(fna.netWorth)}</b>
-            </div>
-          </div>
-        )}
-        {def.checks && (
-          <div className="checklist">
-            <h3 style={{ marginTop: 0 }}>{def.checks.title}</h3>
-            {def.checks.items.map((c) => (
-              <div className="check-row" key={c.key}>
-                <input
-                  type="checkbox"
-                  id={c.key}
-                  checked={checks[c.key]}
-                  disabled={readOnly}
-                  onChange={(e) => {
-                    setChecks((x) => ({ ...x, [c.key]: e.target.checked }));
-                    markDirty(def.column);
-                  }}
-                />
-                <label className="label" htmlFor={c.key}>
-                  {c.label}
-                </label>
-                {c.fill && (
-                  <div className="fill">
-                    <FieldInput
-                      f={{ ...c.fill, type: c.fill.type ?? "text" }}
-                      value={values[c.fill.key] ?? ""}
-                      disabled={readOnly}
-                      onChange={(v) => setField(def.column, c.fill!.key, v)}
-                    />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const filled = (col: FormColumn) => {
-    const def = FORMS.find((f) => f.column === col)!;
-    const keys = formFieldKeys(def);
-    return { n: keys.filter((k) => (forms[col]?.[k] ?? "").trim() !== "").length, total: keys.length };
-  };
-  const tabs: { key: Tab; label: string; count?: string }[] = [
+  const tabs: { key: Tab; label: string }[] = [
     { key: "info", label: "基本資料" },
-    ...FORMS.map((f) => {
-      const c = filled(f.column);
-      return { key: f.column as Tab, label: f.stage, count: `${c.n}/${c.total}` };
-    }),
+    ...STAGES.map((phase) => ({
+      key: phase.key as Tab, label: phase.label,
+    })),
   ];
+  const tabDirty = (key: Tab) => key === "info" ? dirty.has("info") : CLIENT_FORMS.some((form) => form.phase === key && formFieldKeys(form).some((field) => dirty.get(form.column)?.has(field)));
   const genderText = GENDERS.find((g) => g.value === info.gender)?.label;
   const maritalText = MARITAL.find((m) => m.value === info.marital)?.label;
-  const meta = [info.age && `${info.age}歲`, genderText, info.occupation, maritalText].filter(Boolean).join(" · ");
-  const doneChecks = 8 - missing.length;
+  const meta = [info.age && ageLabel(info.age), genderText, info.occupation, maritalText].filter(Boolean).join(" · ");
 
   return (
     <div>
@@ -298,50 +236,19 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
               ))}
             </select>
           </label>
-          <label className="ctl">
-            <span>四季</span>
-            <select
-              value={season}
-              disabled={readOnly || pending}
-              onChange={(e) => changeSeason(e.target.value as SeasonColumn)}
-              aria-label="四季"
-            >
-              <option value={NO_SEASON}>未分類</option>
-              {SEASONS.map((s) => (
-                <option key={s.key} value={s.key}>
-                  {s.emoji} {s.label}（{s.focus}）
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <div className={`readiness${ready ? " ok" : ""}`} data-testid="ready-box">
-          <div className="row">
-            <b>{ready ? "✅ 具備簽單條件" : `簽單條件 ${doneChecks}/8 · 仲差 ${missing.length} 格`}</b>
-            {checksDirty && <span className="muted small">（未儲存）</span>}
-          </div>
-          <div className="progress" aria-hidden>
-            <div style={{ width: `${(doneChecks / 8) * 100}%` }} />
-          </div>
-          {!ready && (
-            <div className="chips">
-              {missing.map((m) => (
-                <span key={m.label} className="chip">
-                  {m.stage}・{m.label}
-                </span>
-              ))}
-            </div>
-          )}
+
         </div>
       </div>
 
-      <p className="muted small" style={{ margin: "12px 0 0" }}>{MEETING_TIPS}</p>
-      <div className="tabs" role="tablist">
+      <div className="tabs" role="tablist" aria-label="客戶資料">
         {tabs.map((t) => (
           <button
             key={t.key}
             role="tab"
+            id={`client-tab-${t.key}`}
+            aria-controls="client-tab-panel"
             aria-selected={tab === t.key}
+            disabled={pending}
             className={`tab${tab === t.key ? " active" : ""}`}
             onClick={() => {
               setTab(t.key);
@@ -349,29 +256,28 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
             }}
           >
             {t.label}
-            {t.count && <span className="tab-count">{t.count}</span>}
-            {dirty.has(t.key) && <span className="dot" title="未儲存" />}
+            {tabDirty(t.key) && <span className="dot" title="未儲存" />}
           </button>
         ))}
       </div>
 
-      <div className="card">
+      <div className="card" role="tabpanel" id="client-tab-panel" aria-labelledby={`client-tab-${tab}`}>
         {tab === "info" ? (
           <InfoFields
             value={info}
-            disabled={readOnly}
+            disabled={readOnly || pending}
             onChange={(v) => {
               setInfo(v);
-              markDirty("info");
+              for (const key of Object.keys(v) as (keyof Info)[]) if (v[key] !== info[key]) markDirty("info", key);
             }}
           />
         ) : (
-          renderForm(FORMS.find((f) => f.column === tab)!)
+          <ClientStageForm phase={tab} forms={forms} info={info} readOnly={readOnly || pending} onChange={setField} />
         )}
 
         {!readOnly && (
           <div className="savebar">
-            <button className="btn btn-primary" onClick={save} disabled={pending || !dirty.has(tab)}>
+            <button className="btn btn-primary" onClick={save} disabled={pending || !tabDirty(tab)}>
               {pending ? "儲存中…" : "儲存"}
             </button>
             {msg && <span className={msg.ok ? "notice" : "error"}>{msg.text}</span>}

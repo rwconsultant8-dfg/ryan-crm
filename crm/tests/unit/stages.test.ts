@@ -14,13 +14,13 @@ describe("簽單條件", () => {
   it("列出仲差邊幾格", () => {
     const c = { ...all(true), rr_relationship: false, nr2_budget_set: false };
     expect(missingChecks(c)).toEqual([
-      { stage: "RR", label: "客人與你有交情／共同經歷" },
-      { stage: "NR2", label: "確立客人預算金額" },
+      { stage: "MEETING", label: "客人與你有交情／共同經歷" },
+      { stage: "FOLLOWUP", label: "確立客人預算金額" },
     ]);
   });
 });
 
-describe("FNA", () => {
+describe("財務分析", () => {
   it("現金流＝收入－支出，淨資產＝資產－負債", () => {
     expect(fnaSummary({ income: "50,000", expense: "32000", assets: "1000000", liabilities: "1200000" })).toEqual({
       cashflow: 18000,
@@ -33,8 +33,8 @@ describe("FNA", () => {
 });
 
 describe("表格定義", () => {
-  it("五個階段表格，欄位 key 唔重複", () => {
-    expect(FORMS.map((f) => f.stage)).toEqual(["RR", "NR1", "NR2", "FNA", "PC"]);
+  it("保留歷史表格資料，按三個新進度整理", () => {
+    expect(FORMS.map((f) => f.phase)).toEqual(["MEETING", "MEETING", "FOLLOWUP", "FOLLOWUP", "PROPOSAL"]);
     for (const f of FORMS) {
       const keys = formFieldKeys(f);
       expect(new Set(keys).size).toBe(keys.length);
@@ -44,15 +44,15 @@ describe("表格定義", () => {
 
 describe("審計顯示", () => {
   it("欄位名轉中文", () => {
-    expect(fieldLabel("form_rr.family")).toBe("RR・1) 家庭");
-    expect(fieldLabel("appts.lunch")).toBe("午餐約會");
+    expect(fieldLabel("form_rr.family")).toBe("了解客戶・1) 家庭");
+    expect(fieldLabel("appts.lunch")).toBe("午餐 appointment");
     expect(fieldLabel("focus.plan")).toBe("宣告 PDCA 焦點");
-    expect(fieldLabel("nr")).toBe("NR 次數");
-    expect(fieldLabel("form_nr2.budget_text")).toBe("NR2・金額");
+    expect(fieldLabel("nr")).toBe("討論財策需要／開口要求次數");
+    expect(fieldLabel("form_nr2.budget_text")).toBe("客戶需要・金額");
     expect(fieldLabel("info.name")).toBe("基本資料・姓名");
-    expect(fieldLabel("nr2_budget_set")).toBe("NR2 條件・確立客人預算金額");
+    expect(fieldLabel("nr2_budget_set")).toBe("簽單條件・確立客人預算金額");
   });
   it("階段變更顯示前後", () => {
-    expect(describeChanges({ stage: { old: "RR", new: "SIGNED" } }, "UPDATE")).toEqual([{ label: "階段", detail: "RR → 已簽" }]);
+    expect(describeChanges({ stage: { old: "RR", new: "SIGNED" } }, "UPDATE")).toEqual([{ label: "階段", detail: "Fact Finding → Closing" }]);
   });
 });

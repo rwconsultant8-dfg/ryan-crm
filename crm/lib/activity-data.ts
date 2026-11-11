@@ -1,26 +1,21 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ACTIVITY_KEYS, emptyCounts, sumCounts, type Counts } from "./activity";
+import { APPT_SLOTS } from "./activity";
+import { calendarEntries } from "./followups";
 import { decryptColumn } from "./secure";
 import { addDays, weekDays } from "./weeks";
 
-export type DayEntry = { day: string; counts: Counts; appts: Record<string, string> };
+export type DayEntry = { day: string; appts: Record<string, string> };
 
-type Row = { owner_id: string; day: string; appts?: Record<string, string> } & Counts;
+type Row = { owner_id: string; day: string; appts?: Record<string, string> };
 
 export const apptRecordId = (ownerId: string, day: string) => `${ownerId}:${day}`;
 
-const toCounts = (r: Partial<Counts>): Counts => {
-  const c = emptyCounts();
-  for (const k of ACTIVITY_KEYS) c[k] = Number(r[k] ?? 0);
-  return c;
-};
-
-/** 某人某週 7 日嘅記錄（冇記錄嘅日子當 0） */
+/** 某人某週 7 日嘅記錄（保留既有加密 appointment） */
 export async function loadWeek(supabase: SupabaseClient, ownerId: string, monday: string): Promise<DayEntry[]> {
   const { data, error } = await supabase
     .from("activity_days")
-    .select(`owner_id, day, appts, ${ACTIVITY_KEYS.join(", ")}`)
+    .select("owner_id, day, appts")
     .eq("owner_id", ownerId)
     .gte("day", monday)
     .lte("day", addDays(monday, 6));
@@ -30,30 +25,25 @@ export async function loadWeek(supabase: SupabaseClient, ownerId: string, monday
     const r = byDay.get(day);
     return {
       day,
-      counts: r ? toCounts(r) : emptyCounts(),
       appts: r ? decryptColumn(apptRecordId(ownerId, day), "appts", r.appts) : {},
     };
   });
 }
 
-/** 一段日子內每人每週嘅次數加總：Map<owner_id, Map<monday, Counts>> */
-export async function loadWeeklyCounts(
-  supabase: SupabaseClient,
-  from: string,
-  to: string,
-  ownerId?: string,
-): Promise<Map<string, Map<string, Counts>>> {
-  let q = supabase.from("activity_days").select(`owner_id, day, ${ACTIVITY_KEYS.join(", ")}`).gte("day", from).lte("day", to);
-  if (ownerId) q = q.eq("owner_id", ownerId);
-  const { data, error } = await q;
-  if (error) throw new Error(error.message);
-  const out = new Map<string, Map<string, Counts>>();
-  for (const r of (data ?? []) as unknown as Row[]) {
-    const d = new Date(r.day + "T00:00:00Z");
-    const monday = addDays(r.day, -((d.getUTCDay() + 6) % 7));
-    const perOwner = out.get(r.owner_id) ?? new Map<string, Counts>();
-    perOwner.set(monday, sumCounts([perOwner.get(monday) ?? emptyCounts(), toCounts(r)]));
-    out.set(r.owner_id, perOwner);
+/** 所有已連結 appointment 供客戶頁、首頁共用；每項只儲存一次。 */
+export async function loadCalendarEntries(supabase: SupabaseClient, ownerId: string, from?: string) {
+  const days: DayEntry[] = [];
+  for (let offset = 0; ; offset += 500) {
+    let q = supabase.from("activity_days").select("owner_id, day, appts").eq("owner_id", ownerId).order("day").range(offset, offset + 499);
+    if (from) q = q.gte("day", from);
+    const { data, error } = await q;
+    if (error) throw new Error("未能讀取日曆安排，請稍後重試。");
+    for (const r of (data ?? []) as Row[]) days.push({ day:r.day, appts:decryptColumn(apptRecordId(ownerId,r.day),"appts",r.appts) });
+    if (!data || data.length < 500) return calendarEntries(days, APPT_SLOTS);
   }
-  return out;
+}
+
+export async function loadTeamCalendarEntries(db:SupabaseClient,from:string){
+ const entries:(ReturnType<typeof calendarEntries>[number]&{owner_id:string})[]=[];
+ for(let offset=0;;offset+=500){const {data,error}=await db.from("activity_days").select("owner_id,day,appts").gte("day",from).order("day").order("owner_id").range(offset,offset+499);if(error)throw Error("未能讀取團隊日曆");for(const row of (data||[]) as Row[]){const appts=decryptColumn(apptRecordId(row.owner_id,row.day),"appts",row.appts);entries.push(...calendarEntries([{day:row.day,appts}],APPT_SLOTS).map(entry=>({...entry,owner_id:row.owner_id})));}if(!data||data.length<500)return entries;}
 }

@@ -1,31 +1,58 @@
 // 準客戶卡嘅階段、表格欄位、簽單條件定義（取代《Prospect Check List》）
 
-export type Stage = "RR" | "NR1" | "NR2" | "FNA" | "PC" | "SIGNED" | "ISSUED";
+export type Stage = "MEETING" | "FOLLOWUP" | "PROPOSAL" | "SIGNED" | "ISSUED";
+export type OpenStage = Exclude<Stage, "SIGNED" | "ISSUED">;
 export type FormStage = "RR" | "NR1" | "NR2" | "FNA" | "PC";
 export type FormColumn = "form_rr" | "form_nr1" | "form_nr2" | "form_fna" | "form_pc";
 
 export const STAGES: { key: Stage; label: string; short: string }[] = [
-  { key: "RR", label: "RR（Fact Finding）", short: "RR" },
-  { key: "NR1", label: "NR1（開口）", short: "NR1" },
-  { key: "NR2", label: "NR2（深度發掘需要）", short: "NR2" },
-  { key: "FNA", label: "FNA 財務分析", short: "FNA" },
-  { key: "PC", label: "PC（提供方案／成交）", short: "PC" },
-  { key: "SIGNED", label: "已簽", short: "已簽" },
-  { key: "ISSUED", label: "已出單", short: "已出單" },
+  { key: "MEETING", label: "Fact Finding", short: "Fact Finding" },
+  { key: "FOLLOWUP", label: "Needs", short: "Needs" },
+  { key: "PROPOSAL", label: "Presentation", short: "Presentation" },
+  { key: "SIGNED", label: "Closing", short: "Closing" },
+  { key: "ISSUED", label: "Referral service", short: "Referral service" },
 ];
 
 export const STAGE_KEYS = STAGES.map((s) => s.key);
-export const stageLabel = (s: Stage) => STAGES.find((x) => x.key === s)?.short ?? s;
+/** 舊 enum 只在資料讀寫邊界相容，不再作產品分類。 */
+export function normalizeStage(value: unknown): Stage {
+  if (value === "FOLLOWUP" || value === "NR2" || value === "FNA") return "FOLLOWUP";
+  if (value === "PROPOSAL" || value === "PC") return "PROPOSAL";
+  if (value === "SIGNED" || value === "ISSUED") return value;
+  return "MEETING";
+}
+export function storageStage(stage: Stage): string {
+  return ({ MEETING: "RR", FOLLOWUP: "NR2", PROPOSAL: "PC", SIGNED: "SIGNED", ISSUED: "ISSUED" })[stage];
+}
+export const stageLabel = (s: unknown) => STAGES.find((x) => x.key === normalizeStage(s))!.short;
 export const isStage = (v: unknown): v is Stage => typeof v === "string" && (STAGE_KEYS as string[]).includes(v);
+
+/** 簡化看板，保留客戶表格原有細階段資料。 */
+export const boardStage = normalizeStage;
 
 export type Field = {
   key: string;
   label: string;
-  type?: "text" | "textarea" | "number" | "date" | "rating";
+  type?: "text" | "textarea" | "number" | "date" | "rating" | "checkbox" | "points";
   hint?: string;
 };
 
 export type Section = { title?: string; note?: string; fields: Field[] };
+
+export const NEED_PRODUCT_SECTIONS: Section[] = [
+  { title: "保障", fields: [
+    { key: "need_life", label: "人壽保險", type: "checkbox" },
+    { key: "need_medical", label: "醫療保險", type: "checkbox" },
+    { key: "need_critical_illness", label: "危疾保險", type: "checkbox" },
+    { key: "need_accident", label: "意外保險", type: "checkbox" },
+  ] },
+  { title: "財富增值", fields: [
+    { key: "need_savings", label: "儲蓄保險", type: "checkbox" },
+    { key: "need_annuity", label: "年金保險", type: "checkbox" },
+    { key: "need_investment_linked", label: "投資相連保險", type: "checkbox" },
+    { key: "need_other", label: "其他產品", type: "checkbox" },
+  ] },
+];
 
 export type CheckKey =
   | "rr_like_trust"
@@ -44,6 +71,7 @@ export const MEETING_TIPS = "見客3寶：① 笑 ② 讚 ③ 同步";
 
 export type FormDef = {
   stage: FormStage;
+  phase: OpenStage;
   column: FormColumn;
   title: string;
   timing: string;
@@ -72,8 +100,9 @@ export const CHECK_KEYS: CheckKey[] = ALL_CHECKS.map((c) => c.key);
 export const FORMS: FormDef[] = [
   {
     stage: "RR",
+    phase: "MEETING",
     column: "form_rr",
-    title: "RR（Fact Finding）",
+    title: "了解客戶",
     timing: "多方面了解客人（事後紀錄）",
     tips: ["狀態決定環境，環境孕育內容", "建立信任目的：鑒定問題", "發掘痛點：A 點 → B 點"],
     sections: [
@@ -98,12 +127,13 @@ export const FORMS: FormDef[] = [
         ],
       },
     ],
-    checks: { title: "在 RR 的過程中，了解客人有否以下條件", items: RR_CHECKS },
+    checks: { title: "了解客人有否以下條件", items: RR_CHECKS },
   },
   {
     stage: "NR1",
+    phase: "MEETING",
     column: "form_nr1",
-    title: "NR1 開口",
+    title: "見面準備",
     timing: "介入點的準備（事前準備）",
     tips: ["創造需要，引發醒覺", "C 點概念建立"],
     sections: [
@@ -119,13 +149,14 @@ export const FORMS: FormDef[] = [
   },
   {
     stage: "NR2",
+    phase: "FOLLOWUP",
     column: "form_nr2",
-    title: "NR2 深度發掘客人的需要",
+    title: "客戶需要",
     timing: "根據和客人的深入討論所得出以下問題的結果（事後紀錄）",
     tips: [
       "透過發問、回應、總結，確立需要的價值／建立強烈的購買原因",
       "確立並一致需要 · Fact & Feeling 理財焦點 · 善用發問的力量",
-      "RR 人生價值觀（AB 點）＋ NR1 認同理財概念（C 點）＝ NR2 獨一無二的購買原因",
+      "由人生價值觀同理財概念，整理客戶需要與購買原因",
     ],
     sections: [
       {
@@ -147,13 +178,16 @@ export const FORMS: FormDef[] = [
           { key: "f_pitch", label: "一分鐘產品簡介", type: "textarea" },
         ],
       },
+      ...NEED_PRODUCT_SECTIONS,
+      { fields: [{ key: "notes", label: "跟進記錄（自由填寫）", type: "textarea" }] },
     ],
     checks: { title: "Appointment 完結前，確認以下 4 項條件", items: NR2_CHECKS },
   },
   {
     stage: "FNA",
+    phase: "FOLLOWUP",
     column: "form_fna",
-    title: "FNA 財務分析",
+    title: "財務分析",
     timing: "金額以港幣（每月）計",
     sections: [
       {
@@ -172,13 +206,14 @@ export const FORMS: FormDef[] = [
   },
   {
     stage: "PC",
+    phase: "PROPOSAL",
     column: "form_pc",
-    title: "PC 提供全面的解決方案／成交",
+    title: "方案與簽署準備",
     timing: "事前準備：填寫好以下會面流程準備，會面時按計劃執行",
     sections: [
       {
         title: "1. 重申上次會面已一致的配置總結方程式",
-        note: "＊澄清有沒有新的想法，如有需由 NR2 再做",
+        note: "＊澄清有沒有新的想法，如有需重新深化跟進",
         fields: [
           { key: "r_purpose", label: "目的", type: "textarea" },
           { key: "r_effect", label: "效果", type: "textarea" },
@@ -221,13 +256,23 @@ export const FORMS: FormDef[] = [
           { key: "conf_confidence", label: "信心", type: "rating" },
         ],
       },
+      { fields: [{ key: "notes", label: "補充記錄（自由填寫）", type: "textarea" }] },
+      { title: "Presentation 共識與練習", fields: [
+        { key: "consensus", label: "共識", hint: "客戶已認同嘅需要、方向同計劃重點", type: "textarea" },
+        { key: "client_connection", label: "計劃書與客戶嘅關聯", hint: "計劃書邊部分回應呢位客戶嘅需要或目標？", type: "textarea" },
+        { key: "drill", label: "Drill（講解練習）", hint: "練習點樣由客戶需要，講到計劃內容同帶來嘅價值", type: "textarea" },
+      ] },
+      { title: "服務留意事項", fields: [
+        { key: "closing_points", label: "Closing 留意事項", type: "points" },
+        { key: "referral_points", label: "Referral service 留意事項", type: "points" },
+      ] },
     ],
   },
 ];
 
 export const formFor = (stage: FormStage) => FORMS.find((f) => f.stage === stage)!;
 
-export function formFieldKeys(def: FormDef): string[] {
+export function formFieldKeys(def: Pick<FormDef, "sections" | "checks">): string[] {
   const keys = def.sections.flatMap((s) => s.fields.map((f) => f.key));
   for (const c of def.checks?.items ?? []) if (c.fill) keys.push(c.fill.key);
   return keys;
@@ -236,9 +281,9 @@ export function formFieldKeys(def: FormDef): string[] {
 export type Checks = Record<CheckKey, boolean>;
 
 /** 仲差邊幾格先具備簽單條件 */
-export function missingChecks(checks: Partial<Checks>): { stage: "RR" | "NR2"; label: string }[] {
+export function missingChecks(checks: Partial<Checks>): { stage: OpenStage; label: string }[] {
   return ALL_CHECKS.filter((c) => !checks[c.key]).map((c) => ({
-    stage: c.key.startsWith("rr_") ? "RR" : "NR2",
+    stage: c.key.startsWith("rr_") ? "MEETING" : "FOLLOWUP",
     label: c.label,
   }));
 }
@@ -276,4 +321,4 @@ export const MARITAL = [
   { value: "widowed", label: "喪偶" },
 ];
 
-export const INFO_KEYS = ["name", "age", "gender", "occupation", "marital"] as const;
+export const INFO_KEYS = ["name", "age", "gender", "occupation", "marital", "customer_type"] as const;

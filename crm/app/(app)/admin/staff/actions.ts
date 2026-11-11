@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+import { listTelegramLinks, validTelegramId } from "@/lib/telegram/registry";
+
 export type StaffResult = { ok: boolean; message: string } | null;
 
 const BAN_FOREVER = "876000h"; // 約 100 年
@@ -76,14 +78,22 @@ export async function resetPasswordAction(userId: string, password: string): Pro
   return { ok: true, message: "已重設密碼，請私下交俾員工" };
 }
 
-export async function setWhatsappAction(userId: string, phone: string): Promise<StaffResult> {
+export async function setTelegramAction(userId: string, rawId: string): Promise<StaffResult> {
   const { supabase } = await requireAdmin();
-  const digits = phone.replace(/[^0-9]/g, "");
-  const value = digits === "" ? null : digits.length === 8 ? `852${digits}` : digits; // 8 位數當香港號碼
-  if (value && !/^[0-9]{8,15}$/.test(value)) return { ok: false, message: "號碼格式唔啱" };
-  const { data, error } = await supabase.from("profiles").update({ whatsapp: value }).eq("id", userId).select("id");
-  if (error) return { ok: false, message: error.message.includes("unique") || error.code === "23505" ? "呢個號碼已經俾其他員工用咗" : "更新失敗：" + error.message };
-  if (!data?.length) return { ok: false, message: "更新失敗" };
+  const value = rawId.trim();
+  if (value && !validTelegramId(value)) return { ok: false, message: "請填助手顯示嘅數字帳戶 ID，唔係電話號碼或 @username。" };
+  const { data: target } = await supabase.from("profiles").select("id").eq("id", userId).maybeSingle();
+  if (!target) return { ok: false, message: "搵唔到員工" };
+  const admin = createAdminClient();
+  try {
+    const links = await listTelegramLinks(admin);
+    if (value && [...links].some(([owner, id]) => owner !== userId && id === value)) return { ok: false, message: "呢個 Telegram 帳戶已綁定其他員工。" };
+    const { data, error } = await admin.auth.admin.getUserById(userId);
+    if (error || !data.user) return { ok: false, message: "未能讀取員工帳戶" };
+    const { error: updateError } = await admin.auth.admin.updateUserById(userId, { app_metadata: { ...data.user.app_metadata, telegram_user_id: value || null } });
+    if (updateError) return { ok: false, message: "未能更新 Telegram 綁定" };
+  } catch { return { ok: false, message: "未能更新 Telegram 綁定，請稍後重試。" }; }
   revalidatePath("/admin/staff");
-  return { ok: true, message: value ? `已設定 WhatsApp：+${value}` : "已清除 WhatsApp 號碼" };
+  revalidatePath("/telegram");
+  return { ok: true, message: value ? `已綁定 Telegram：${value}` : "已解除 Telegram 綁定" };
 }
