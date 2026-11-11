@@ -1,8 +1,8 @@
 import "server-only";
 import type {SupabaseClient} from "@supabase/supabase-js";
 import {resolveCoachToken} from "./credentials";
-export const TEAM_BOT_NAME="Ryan大佬bot";
-const marker="telegram-profile:Ryan_main_bot:ryan-daailou-name-v1";
+export const TEAM_BOT_NAME="ZEST 團隊助手";
+const marker="telegram-profile:Ryan_main_bot:zest-team-name-v2";
 /** Apply the requested display name once, through the authenticated production worker. */
 export async function syncTelegramDisplayName(admin:SupabaseClient){
  if(process.env.VERCEL_ENV!=="production")return;
@@ -19,5 +19,5 @@ export async function syncTelegramDisplayName(admin:SupabaseClient){
  await api("setMyName",{name:TEAM_BOT_NAME});
  const verified=await api("getMyName");if(verified.name!==TEAM_BOT_NAME)throw Error("Bot name not verified");
  const {error}=await admin.from("wa_seen_messages").insert({message_id:marker});if(error&&error.code!=="23505")throw Error("Bot name state unavailable");
- console.info("Telegram bot display name verified: Ryan大佬bot");
+ console.info("Telegram bot display name verified: ZEST 團隊助手");
 }

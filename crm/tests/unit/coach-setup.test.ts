@@ -9,7 +9,7 @@ const fakeToken="12345:abcdefghijklmnopqrstuvwxyz";
 const form=()=>{const f=new FormData();f.set("token",fakeToken);return f;};
 beforeEach(()=>{vi.clearAllMocks();vi.stubEnv("TELEGRAM_COACH_BOT_USERNAME","Ryan_main_bot");vi.stubEnv("TELEGRAM_COACH_WEBHOOK_SECRET","coach-secret");mocks.auth.mockResolvedValue({});mocks.ready.mockResolvedValue(true);mocks.token.mockResolvedValue(fakeToken);mocks.save.mockResolvedValue(undefined);mocks.ai.mockResolvedValue({content:[{type:"text",text:"OK"}]});});
 afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs();});
-describe("單獨安全啟用Ryan大佬bot",()=>{
+describe("單獨安全啟用ZEST 團隊助手",()=>{
  it("refuses a non-admin before reading or storing a token",async()=>{mocks.auth.mockRejectedValue(new Error("not admin"));await expect(saveCoachCredentialAction(form())).rejects.toThrow();expect(mocks.save).not.toHaveBeenCalled();});
  it("does not persist a token for the wrong actual bot",async()=>{vi.stubGlobal("fetch",vi.fn(async()=>({ok:true,json:async()=>({ok:true,result:{username:"wrong_bot"}})})));const result=await saveCoachCredentialAction(form());expect(result.ok).toBe(false);expect(mocks.save).not.toHaveBeenCalled();expect(result.message).not.toContain(fakeToken);});
  it("stores verified credentials, connects only the coach route and checks AI without requiring a PA token",async()=>{

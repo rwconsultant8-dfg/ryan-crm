@@ -6,7 +6,7 @@ import { AiRefusal, extractFromMessage } from "./ai";
 import { applyDraft, describeDraft, hasContent, loadClientNames, matchClient, type Draft } from "./apply";
 import { latestPending, reopen, sealDraft, setStatus } from "./drafts";
 import { decryptColumn } from "../secure";
-import { prepareTasks } from "./tasks";
+import { prepareTasks, taskMessageSchema } from "./tasks";
 import { sendText } from "./send";
 import { aiFailureInfo } from "../ai-errors";
 import { codexMode, enqueueJob, cancelOwnerJobs } from "../codex/jobs";
@@ -19,7 +19,7 @@ import { deliverCoachReply, loadCoachConversation, savedCoachReply } from "../te
 
 export type Incoming = { from: string; messageId: string; type: string; text: string; fileId?:string;fileName?:string;mimeType?:string;fileSize?:number;telegramMessageId?:number };
 
-const HELP = `你好，我係 Ryan大佬bot。
+const HELP = `你好，我係 ZEST 團隊助手。
 有問題可以直接問我；想記錄客戶資料或安排，就講客戶姓名同重點，我會幫你更新到 app。
 亦可以幫你上網搵官方資料及小冊子、下載文件、OCR相片／PDF、修改PPTX文字及填PDF／XLSX表格。先傳檔案，再講想點改。
 最新資料會查來源；資料唔清楚時會再問你，唔會估填。`;
@@ -184,7 +184,7 @@ export async function processIncoming(
       extraction.tasks=messages.map(t=>{
         if(t.operation==="reschedule")index++;
         const item=draft.taskItems![index++],original=decryptColumn(item.id,"info",item.info);
-        return {...t,name:original.name,plan:original.plan,...(t.operation==="reschedule"?{new_day:item.day,time:original.time || ""}:{})};
+        return taskMessageSchema.parse({...t,name:original.name,plan:original.plan,...(t.operation==="reschedule"?{new_day:item.day,time:original.time || "",period:original.period || ""}:{})});
       });
     }catch(e){return sendText(msg.from,(e as Error).message);}
   }

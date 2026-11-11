@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import {appointmentTimeLabel} from "@/lib/activity";
 import { useState,useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addContactEventAction } from "@/app/(app)/clients/actions";
@@ -13,7 +14,7 @@ export default function ClientFollowups({clientId,tasks,appointments,history,tod
   const router=useRouter();
   const events = [
     ...history.map(e=>({id:e.id,when:e.day || e.at.slice(0,10),label:e.kind==="contact" ? "聯絡記錄" : "備註",text:e.text})),
-    ...tasks.map(t=>({id:t.id,when:`${t.day} ${t.time || ""}`,label:`任務 · ${STATUSES[t.status]}`,text:`${t.plan}${t.result ? `\n結果：${t.result}` : ""}`})),
+    ...tasks.map(t=>({id:t.id,when:`${t.day} ${appointmentTimeLabel(t.time,t.period)}`,label:`任務 · ${STATUSES[t.status]}`,text:`${t.plan}${t.result ? `\n結果：${t.result}` : ""}`})),
     ...appointments.map(a=>({id:`${a.day}:${a.slot}`,when:`${a.day} ${a.time || ""}`,label:`${a.label} appointment${a.day>=today ? " · 已安排" : " · 行程記錄"}`,text:a.text})),
   ].sort((a,b)=>b.when.localeCompare(a.when));
   return <section className="client-followups">

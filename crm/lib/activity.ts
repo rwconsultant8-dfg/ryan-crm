@@ -15,11 +15,16 @@ export const ACTIVITY_KEYS = ACTIVITIES.map((a) => a.key);
 export const PERFECT_TOTAL = ACTIVITIES.reduce((s, a) => s + a.perfect, 0); // 100
 
 export const APPT_SLOTS = [
-  { key: "breakfast", label: "早餐", time: "8–10AM" },
-  { key: "lunch", label: "午餐", time: "12NN–2PM" },
-  { key: "tea", label: "下午茶", time: "3–5PM" },
-  { key: "dinner", label: "晚飯", time: "7–9PM" },
+  { key: "breakfast", label: "上午", time: "06:00–11:59" },
+  { key: "lunch", label: "中午", time: "12:00–13:59" },
+  { key: "tea", label: "下午", time: "14:00–17:59" },
+  { key: "dinner", label: "晚上", time: "18:00–翌日05:59" },
 ] as const;
+
+export const DAY_PERIODS = { morning: "上午", noon: "中午", afternoon: "下午", evening: "晚上" } as const;
+export type DayPeriod = keyof typeof DAY_PERIODS;
+const periodSlots = { morning: "breakfast", noon: "lunch", afternoon: "tea", evening: "dinner" } as const;
+export const appointmentTimeLabel = (time?:string, period?:string) => time || (period && Object.hasOwn(DAY_PERIODS,period) ? DAY_PERIODS[period as DayPeriod] : "");
 
 export type Counts = Record<ActivityKey, number>;
 export const emptyCounts = (): Counts => ({ r: 0, n: 0, a: 0, rr: 0, nr: 0, pc: 0 });
@@ -45,9 +50,10 @@ export const kpiOf = (total: number): Kpi => (total >= 70 ? "green" : total >= 4
 export const KPI_LABEL: Record<Kpi, string> = { green: "綠", yellow: "黃", red: "紅" };
 
 /** Timed task appointments share the calendar grid without duplicating stored records. */
-export function appointmentSlot(time?:string): typeof APPT_SLOTS[number]["key"] | null {
-  if(!time || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time))return null;
-  const minutes=Number(time.slice(0,2))*60+Number(time.slice(3));
-  const windows=[{key:"breakfast",start:480,end:600},{key:"lunch",start:720,end:840},{key:"tea",start:900,end:1020},{key:"dinner",start:1140,end:1260}] as const;
-  return windows.find(w=>minutes>=w.start && minutes<=w.end)?.key || null;
+export function appointmentSlot(time?:string, period?:string): typeof APPT_SLOTS[number]["key"] | null {
+  if(time && /^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+    const hour=Number(time.slice(0,2));
+    return hour<6 || hour>=18 ? "dinner" : hour<12 ? "breakfast" : hour<14 ? "lunch" : "tea";
+  }
+  return period && Object.hasOwn(periodSlots,period) ? periodSlots[period as DayPeriod] : null;
 }

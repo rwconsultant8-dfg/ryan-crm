@@ -61,7 +61,7 @@ describe("草稿", () => {
     expect(msg).toContain("📅 日曆（10/10）");
     expect(msg).not.toContain("A+1");
     expect(msg).not.toContain("RR+1");
-    expect(msg).toContain("🍽 午餐 appointment：何生 中環");
+    expect(msg).toContain("🍽 中午 appointment：何生 中環");
     expect(msg).toContain("回覆「確認」儲存");
   });
 });

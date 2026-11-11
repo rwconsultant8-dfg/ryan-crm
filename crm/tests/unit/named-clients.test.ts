@@ -8,6 +8,14 @@ import type {Extraction} from "@/lib/whatsapp/schema";
 const empty:Extraction={client:{name:"",age:"",gender:"",occupation:"",marital:""},fields:[],checks:[],stage:"",season:"",activity:{r:0,n:0,a:0,rr:0,nr:0,pc:0},appointment:{slot:"",text:""},date:"2026-11-08",summary:"",tasks:[]};
 beforeEach(()=>{process.env.DATA_ENCRYPTION_KEY=Buffer.alloc(32,7).toString("base64");});
 describe("immediate customer profiles from names",()=>{
+ it("automatically saves a Telegram afternoon appointment without asking for or inventing a time",async()=>{
+  const db=coachingDatabase(),send=vi.fn();
+  await processIncoming({from:"123",messageId:"period-only",type:"text",text:"Mary 聽日下午中環見"},"staff-a",db.db,send,"telegram",{today:empty.date,extract:async()=>({...empty,client_names:["Mary"],tasks:[{operation:"create",day:"2026-11-09",time:"",period:"afternoon",category:"appointment",stage:"",name:"Mary",plan:"中環見",status:"planned",result:""}]})});
+  expect(db.tables.daily_tasks).toHaveLength(1);
+  const task=db.tables.daily_tasks[0],info=decryptColumn(task.id,"info",task.info);
+  expect(info).toMatchObject({name:"Mary",period:"afternoon",plan:"中環見",client_id:db.tables.clients[0].id});expect(info.time || "").toBe("");
+  expect(send).toHaveBeenCalledWith("123",expect.stringContaining("下午"));
+ });
  it("creates each name immediately with no invented details and reuses repeated names",async()=>{
   const db=coachingDatabase();await ensureNamedClients(db.db,"staff-a",["Mary","Peter"," Mary "]);
   expect(db.tables.clients).toHaveLength(2);for(const row of db.tables.clients)expect(Object.keys(decryptColumn(row.id,"info",row.info))).toEqual(["name"]);

@@ -11,7 +11,7 @@ import CoachOverview from "@/components/CoachOverview";
 export default async function AdminOverview({searchParams}:{searchParams:Promise<{week?:string}>}){
  const {supabase,profile}=await requireAdmin(),sp=await searchParams||{},today=hkToday(),monday=mondayOf(isDate(sp.week)?sp.week:today);
  const [{data:people,error},cards,avatar]=await Promise.all([supabase.from("profiles").select("id,email,full_name,role,active").order("full_name"),listClientCards(supabase),getProfileAvatar(profile).catch(()=>null)]);
- if(error)return <><h1>Ryan大佬bot總覽</h1><p className="error" role="alert">未能讀取同事名單，請重新載入。</p></>;
+ if(error)return <><h1>ZEST 團隊助手總覽</h1><p className="error" role="alert">未能讀取同事名單，請重新載入。</p></>;
  const staff=((people||[]) as Profile[]).filter(p=>p.active||cards.some(c=>c.owner_id===p.id)),names=new Map(staff.map(p=>[p.id,displayName(p)]));
  const results=await Promise.allSettled([loadFollowups(supabase),loadTeamCalendarEntries(supabase,today),loadCoaching(supabase)]);
  const tasks=results[0].status==="fulfilled"?results[0].value:[],appointments=results[1].status==="fulfilled"?results[1].value:[],notes=results[2].status==="fulfilled"?results[2].value:[];

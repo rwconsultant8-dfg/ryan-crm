@@ -43,6 +43,8 @@ describe("主管查看同事日曆", () => {
     for (const person of people) expect(html).toContain(`value="${person.id}"`);
     expect(html).toContain('name="week" value="2026-11-09"');
     expect(html).toContain("Chelsea 嘅日曆");
+    expect(html).toContain('aria-label="選擇同事日曆"');
+    expect(html).toContain('href="/activity?week=2026-11-09&amp;agent=momo"');
     expect(html).toContain("chelsea 原有約會");
     expect(html).toContain("chelsea 客戶");
     expect(html).toContain("Telegram 見客安排");

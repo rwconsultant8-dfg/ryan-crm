@@ -40,40 +40,40 @@ async function api(token:string, method:string, body:Record<string,unknown>={}){
 }
 export async function registerBotsAction():Promise<{ok:boolean;message:string}>{
   await requireAdmin();
-  if(!await isCoachReady()||!paReady())return{ok:false,message:"兩個 Bot 設定未齊，可以先用下方一格安全輸入金鑰，單獨啟用Ryan大佬bot。"};
+  if(!await isCoachReady()||!paReady())return{ok:false,message:"兩個 Bot 設定未齊，可以先用下方一格安全輸入金鑰，單獨啟用ZEST 團隊助手。"};
   let coachConnected=false;
   try{
     if(!await resolveTelegramAgent(createAdminClient(),paUserId()))return{ok:false,message:"請先喺員工帳戶將 Ryan 嘅數字 Telegram ID 綁定佢自己嘅有效 CRM 帳戶。"};
     const token=(await resolveCoachToken())!;
     const [coach,pa]=await Promise.all([api(token,"getMe"),api(paToken()!,"getMe")]);
     if(coach.id===pa.id)return{ok:false,message:"呢兩套金鑰屬於同一個 Bot，請設定兩個獨立 Bot。"};
-    if([coach.username,pa.username].some(name=>name?.toLowerCase()==="cloud_compute_bot"))return{ok:false,message:"cloud_compute_bot 係現有文件助手，請用新建嘅 Ryan PA 同Ryan大佬bot，避免中斷原有服務。"};
+    if([coach.username,pa.username].some(name=>name?.toLowerCase()==="cloud_compute_bot"))return{ok:false,message:"cloud_compute_bot 係現有文件助手，請用新建嘅 Ryan PA 同ZEST 團隊助手，避免中斷原有服務。"};
     const base="https://ryan-crm-chi.vercel.app";
     await api(token,"setWebhook",{url:`${base}/api/telegram`,secret_token:coachSecret(),allowed_updates:["message"],max_connections:1,drop_pending_updates:false});coachConnected=true;
     await api(paToken()!,"setWebhook",{url:`${base}/api/telegram/pa`,secret_token:paSecret(),allowed_updates:["message"],max_connections:1,drop_pending_updates:false});
     const [coachStatus,paStatus]=await Promise.all([api(token,"getWebhookInfo"),api(paToken()!,"getWebhookInfo")]);
     if(coachStatus.url!==`${base}/api/telegram`||paStatus.url!==`${base}/api/telegram/pa`)throw new Error();
     revalidatePath("/admin/bots");revalidatePath("/telegram");
-    return{ok:true,message:`已核對兩個獨立 Bot 並接駁成功：Ryan大佬bot @${coach.username}；Ryan 私人 PA @${pa.username}。請各自私訊 /start 試用。`};
-  }catch{return{ok:false,message:coachConnected?"Ryan大佬bot 已設定 webhook，但未能確認兩個 Bot 都接通。請核對 PA 金鑰後再試。":"未能接駁，請核對 Bot 金鑰同 Telegram 設定後再試。"};}
+    return{ok:true,message:`已核對兩個獨立 Bot 並接駁成功：ZEST 團隊助手 @${coach.username}；Ryan 私人 PA @${pa.username}。請各自私訊 /start 試用。`};
+  }catch{return{ok:false,message:coachConnected?"ZEST 團隊助手 已設定 webhook，但未能確認兩個 Bot 都接通。請核對 PA 金鑰後再試。":"未能接駁，請核對 Bot 金鑰同 Telegram 設定後再試。"};}
 }
 
 export async function registerCoachAction():Promise<{ok:boolean;message:string;needsVerification?:boolean}>{
   await requireAdmin();
-  if(!await isCoachReady())return{ok:false,message:"Ryan大佬bot 未齊設定。可以喺呢頁安全輸入 @Ryan_main_bot 嘅 BotFather 金鑰，私人 PA 唔需要先設定。"};
+  if(!await isCoachReady())return{ok:false,message:"ZEST 團隊助手 未齊設定。可以喺呢頁安全輸入 @Ryan_main_bot 嘅 BotFather 金鑰，私人 PA 唔需要先設定。"};
   try{
     const token=(await resolveCoachToken())!;
     const coach=await api(token,"getMe");
-    if(typeof coach.username!=="string" || coach.username.toLowerCase()!==(coachUsername() || "Ryan_main_bot").toLowerCase())return{ok:false,message:"呢個 token 唔屬於指定Ryan大佬bot，未有更改 webhook。請核對 @Ryan_main_bot 嘅金鑰。"};
+    if(typeof coach.username!=="string" || coach.username.toLowerCase()!==(coachUsername() || "Ryan_main_bot").toLowerCase())return{ok:false,message:"呢個 token 唔屬於指定ZEST 團隊助手，未有更改 webhook。請核對 @Ryan_main_bot 嘅金鑰。"};
     const url="https://ryan-crm-chi.vercel.app/api/telegram";
     await api(token,"setWebhook",{url,secret_token:coachSecret(),allowed_updates:["message"],max_connections:1,drop_pending_updates:false});
     const status=await api(token,"getWebhookInfo");
     if(status.url!==url)throw new Error();
     revalidatePath("/admin/bots");revalidatePath("/telegram");
     const service=await checkAI();
-    if(!service.ok)return{...service,message:`Ryan大佬bot 金鑰已保存，Telegram 連線已接通；${service.message}`};
-    return{ok:true,message:`Ryan大佬bot @${coach.username} 已接通。請私訊 /start，將顯示嘅數字 ID 喺員工帳戶綁定，再試提交更新。私人 PA 未有更改。`};
-  }catch{return{ok:false,message:"未能確認Ryan大佬bot 已接通，請檢查 token 後再試。私人 PA 未有更改。"};}
+    if(!service.ok)return{...service,message:`ZEST 團隊助手 金鑰已保存，Telegram 連線已接通；${service.message}`};
+    return{ok:true,message:`ZEST 團隊助手 @${coach.username} 已接通。請私訊 /start，將顯示嘅數字 ID 喺員工帳戶綁定，再試提交更新。私人 PA 未有更改。`};
+  }catch{return{ok:false,message:"未能確認ZEST 團隊助手 已接通，請檢查 token 後再試。私人 PA 未有更改。"};}
 }
 
 export async function saveCoachCredentialAction(form:FormData):Promise<{ok:boolean;message:string;needsVerification?:boolean}>{

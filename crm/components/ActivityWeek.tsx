@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { saveActivityWeekAction } from "@/app/(app)/activity/actions";
 import {isCalendarTask} from "@/lib/calendar-tasks";
-import { APPT_SLOTS, appointmentSlot } from "@/lib/activity";
+import { APPT_SLOTS, appointmentSlot, appointmentTimeLabel } from "@/lib/activity";
 import { appointmentClientKey, appointmentTimeKey, type ClientOption } from "@/lib/followups";
 import type { Task } from "@/lib/planner";
 import { WEEKDAY_LABELS, shortDate } from "@/lib/weeks";
@@ -22,7 +22,7 @@ function AppointmentCell({ day, slot, clients, disabled, readOnly, initialClient
   return <article className={`calendar-cell ${text || selected || tasks.length ? "has-appointment" : ""}`}>
     <div className="row"><span className="slot-symbol" aria-hidden="true">{slot.key==="breakfast" ? "☀" : slot.key==="dinner" ? "☾" : "◌"}</span><strong>{slot.label}</strong><span className="spacer"/><small className="muted">{time || slot.time}</small></div>
     {(text || selected) && <div className="appointment-summary">{client && <Link href={`/clients/${client.id}`}>{client.name || "未命名客戶"} ↗</Link>}<p>{text}</p></div>}
-    {tasks.map(t=><article className="calendar-task" key={t.id}><span className="badge badge-grey">appointment{t.status==="done" ? " · 已完成" : ""}</span><strong>{t.time} · {t.client_id ? <Link href={`/clients/${t.client_id}`}>{t.name} ↗</Link> : t.name}</strong><p>{t.plan}</p><Link href={`/today?week=${day.day}${ownerQuery}`}>查看安排 →</Link></article>)}
+    {tasks.map(t=><article className="calendar-task" key={t.id}><span className="badge badge-grey">見面{t.status==="done" ? " · 已完成" : ""}</span><strong>{appointmentTimeLabel(t.time,t.period)} · {t.client_id ? <Link href={`/clients/${t.client_id}`}>{t.name} ↗</Link> : t.name}</strong><p>{t.plan}</p><Link href={`/today?week=${day.day}${ownerQuery}`}>查看安排 →</Link></article>)}
     {!readOnly && <details><summary>{text || selected ? "編輯安排" : "＋ 安排 appointment"}</summary>
       <label className="field"><span>連結客戶</span><select aria-label={`${day.day} ${slot.label}客戶`} disabled={disabled} value={selected} onChange={e=>edit(key,e.target.value)}><option value="">暫不連結</option>{clients.map(c=><option value={c.id} key={c.id}>{c.name || "未命名客戶"}</option>)}</select></label>
       {initialClient && !selected && <button className="btn btn-sm" disabled={disabled} onClick={()=>edit(key,initialClient)}>揀返剛才嘅客戶</button>}
@@ -52,12 +52,12 @@ export default function ActivityWeek({days:initial,today,readOnly,clients=[],tas
     } catch {setMessage({ok:false,text:"未能儲存，請重試。"});}
   });}
   return <>
-    <p className="muted">早餐、午餐、下午茶、晚飯，為每段關係留一個見面時間。揀選客戶後，安排會同步顯示喺客戶頁。</p>
+    <p className="muted">上午、中午、下午、晚上。講明時間或時段嘅見面安排會自動放入對應位置，並同步顯示喺客戶頁。</p>
     <div className="calendar-mobile-days" role="group" aria-label="選擇日曆日期">{days.map((d,i)=><button className={`btn ${active===i ? "btn-primary" : ""}`} key={d.day} aria-pressed={active===i} onClick={()=>setActive(i)}>{WEEKDAY_LABELS[i].replace("星期","")}<small>{shortDate(d.day)}</small></button>)}</div>
     <div className="calendar-week" aria-label="每週日曆">{days.map((d,i)=><section key={d.day} className={`calendar-day ${active===i?"selected-day":""} ${d.day===today?"is-today":""}`}>
       <header><span>{WEEKDAY_LABELS[i]}{d.day===today && " · 今日"}</span><strong>{shortDate(d.day)}</strong>{dirty.has(d.day)&&<span className="badge badge-yellow">未儲存</span>}</header>
-      {APPT_SLOTS.map(s=><AppointmentCell key={s.key} day={d} slot={s} clients={clients} disabled={readOnly||pending} readOnly={readOnly} initialClient={initialClient} ownerQuery={ownerQuery} tasks={tasks.filter(t=>t.day===d.day && isCalendarTask(t) && appointmentSlot(t.time)===s.key)} edit={(key,value)=>edit(i,key,value)}/>)}
-      {tasks.filter(t=>t.day===d.day && isCalendarTask(t) && !appointmentSlot(t.time)).map(t=><article className="calendar-task" key={t.id}><span className="badge badge-grey">任務 appointment{t.status==="done" ? " · 已完成" : ""}</span><strong>{t.time || "時間待定"} · {t.name}</strong><p>{t.plan}</p><Link href={`/today?week=${days[0].day}${ownerQuery}`}>查看任務 →</Link></article>)}
+      {APPT_SLOTS.map(s=><AppointmentCell key={s.key} day={d} slot={s} clients={clients} disabled={readOnly||pending} readOnly={readOnly} initialClient={initialClient} ownerQuery={ownerQuery} tasks={tasks.filter(t=>t.day===d.day && isCalendarTask(t) && appointmentSlot(t.time,t.period)===s.key)} edit={(key,value)=>edit(i,key,value)}/>)}
+      {tasks.filter(t=>t.day===d.day && isCalendarTask(t) && !appointmentSlot(t.time,t.period)).map(t=><article className="calendar-task" key={t.id}><span className="badge badge-grey">見面{t.status==="done" ? " · 已完成" : ""}</span><strong>{appointmentTimeLabel(t.time,t.period) || "時間待定"} · {t.name}</strong><p>{t.plan}</p><Link href={`/today?week=${days[0].day}${ownerQuery}`}>查看任務 →</Link></article>)}
     </section>)}</div>
     {!readOnly && <div className="savebar"><button className="btn btn-primary" onClick={save} disabled={pending||!dirty.size}>{pending?"儲存中…":"儲存日曆"}</button>{dirty.size>0&&<span className="small muted">{dirty.size} 日有變更</span>}{message&&<span role={message.ok?"status":"alert"} className={message.ok?"notice":"error"}>{message.text}</span>}</div>}
   </>;

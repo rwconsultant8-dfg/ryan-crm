@@ -20,7 +20,7 @@ export async function loadSchedulingContext(db:SupabaseClient, owner:string, tod
         if(table==="daily_tasks") {
           if(row.status!=="planned" && row.status!=="blocked")continue;
           const info=decryptColumn(row.id,"info",row.info);
-          tasks.push({id:row.id,day:row.day,category:row.category,stage:row.stage,status:row.status,name:info.name,plan:info.plan,time:info.time || ""});
+          tasks.push({id:row.id,day:row.day,category:row.category,stage:row.stage,status:row.status,name:info.name,plan:info.plan,time:info.time || "",period:info.period || ""});
         } else {
           const appts=decryptColumn(apptRecordId(owner,row.day),"appts",row.appts);
           calendar.push(...calendarEntries([{day:row.day,appts}],APPT_SLOTS));

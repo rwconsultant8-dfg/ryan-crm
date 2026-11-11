@@ -20,7 +20,7 @@ import {
 } from "@dnd-kit/core";
 import { moveSeasonAction, moveStageAction, unsignAction } from "@/app/(app)/clients/actions";
 import { hkToday } from "@/lib/weeks";
-import { GENDERS, STAGES, stageLabel, missingChecks, boardStage, type Checks, type Stage } from "@/lib/stages";
+import { GENDERS, STAGES, boardStage, type Checks, type Stage } from "@/lib/stages";
 import { NO_SEASON, SIGNED_ZONE, normalizeSeason, stageForSeason, type SeasonColumn } from "@/lib/seasons";
 
 export type BoardCard = {
@@ -42,18 +42,12 @@ export type BoardCard = {
 const genderLabel = (g: string) => GENDERS.find((x) => x.value === g)?.label ?? "";
 
 function CardBody({ c }: { c: BoardCard }) {
-  const missing = missingChecks(c.checks);
   const meta = [c.age && ageLabel(c.age), genderLabel(c.gender), c.occupation].filter(Boolean).join(" · ");
   return (
     <>
       <div className="row">
         <span className="name">{c.name || "（未命名）"}</span>{c.customerType && <span className="badge badge-grey">{customerTypeLabel(c.customerType)}</span>}{c.ownerName&&<small className="compact-next">負責：{c.ownerName}</small>}
         <span className="spacer" />
-        {c.ready ? (
-          <span className="badge badge-green">✓ 具備簽單條件</span>
-        ) : (
-          <span className="badge badge-yellow">仲差 {missing.length} 格</span>
-        )}
       </div>
       {meta && <div className="meta">{meta}</div>}
       {c.next !== undefined && c.stage !== "SIGNED" && c.stage !== "ISSUED" && <div className={`next-step ${c.next ? "" : "not-planned"}`}>
@@ -61,9 +55,6 @@ function CardBody({ c }: { c: BoardCard }) {
         {c.next && <strong>{c.next.plan}</strong>}
       </div>}
       {c.lastContact && <div className="meta">上次聯絡 {c.lastContact}</div>}
-      {!c.ready && missing.length <= 3 && (
-        <div className="missing">差：{missing.map((m) => `${stageLabel(m.stage)}・${m.label}`).join("、")}</div>
-      )}
     </>
   );
 }
@@ -178,10 +169,6 @@ export default function Board({
       }
     });
 
-  const confirmNotReady = (card: BoardCard, label: string) =>
-    card.ready ||
-    window.confirm(`「${card.name}」仲差 ${missingChecks(card.checks).length} 格先具備簽單條件，確定移去「${label}」？`);
-
   const onDragEnd = (e: DragEndEvent) => {
     setActiveId(null);
     const id = String(e.active.id);
@@ -193,14 +180,12 @@ export default function Board({
     setNotice(null);
 
     if (groupBy === "stage") {
-      if ((to === "SIGNED" || to === "ISSUED") && !confirmNotReady(card, STAGES.find((s) => s.key === to)?.short ?? to)) return;
       setCards((cs) => cs.map((c) => (c.id === id ? { ...c, stage: to as Stage } : c)));
       return run(prev, () => moveStageAction(id, to));
     }
 
     // 已簽客戶獨立放喺三欄下面。
     if (to === SIGNED_ZONE) {
-      if (!confirmNotReady(card, "已簽")) return;
       setCards((cs) => cs.map((c) => (c.id === id ? { ...c, stage: "SIGNED" } : c)));
       return run(
         prev,

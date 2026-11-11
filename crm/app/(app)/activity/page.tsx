@@ -8,13 +8,19 @@ import { loadWeek } from "@/lib/activity-data";
 import { addDays, hkToday, isDate, isoWeek, mondayOf, shortDate } from "@/lib/weeks";
 
 function CalendarFilters({ people, ownerId, monday }: { people: Profile[]; ownerId: string; monday: string }) {
-  return <form key={`${ownerId}:${monday}`} action="/activity" method="get" className="card coach-filters">
+  return <section className="card" aria-label="團隊日曆">
+    <h2>同事日曆</h2>
+    <nav className="row" aria-label="選擇同事日曆" style={{flexWrap:"wrap",gap:8,marginBottom:12}}>
+      {people.map(person=><Link key={person.id} className={`btn btn-sm${person.id===ownerId ? " btn-primary" : ""}`} aria-current={person.id===ownerId ? "page" : undefined} href={`/activity?week=${monday}&agent=${person.id}`}>{displayName(person)}{person.active ? "" : "（已停用）"}</Link>)}
+    </nav>
+    <form key={`${ownerId}:${monday}`} action="/activity" method="get" className="coach-filters">
     <input type="hidden" name="week" value={monday} />
     <label className="field"><span>查看同事日曆</span><select name="agent" defaultValue={ownerId}>
       {people.map((person) => <option key={person.id} value={person.id}>{displayName(person)}{person.active ? "" : "（已停用）"}</option>)}
     </select></label>
     <button className="btn btn-primary" type="submit">查看日曆</button>
-  </form>;
+    </form>
+  </section>;
 }
 
 export default async function ActivityPage({ searchParams }: { searchParams: Promise<{ week?: string; agent?: string; client?: string }> }) {

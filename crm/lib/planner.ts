@@ -13,6 +13,7 @@ export const taskInputSchema = z.object({
   plan: z.string().trim().min(1).max(1000),
   client_id: z.union([z.string().uuid(), z.literal("")]).optional(),
   time: z.string().refine(validTime, "時間無效").optional(),
+  period: z.enum(["", "morning", "noon", "afternoon", "evening"]).optional(),
 });
 export type TaskInput = z.infer<typeof taskInputSchema>;
 export type Task = TaskInput & { id: string; owner_id: string; status: keyof typeof STATUSES; result: string; updated_at: string };

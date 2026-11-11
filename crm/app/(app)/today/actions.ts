@@ -9,7 +9,7 @@ export async function createTask(input: unknown) {
   const parsed = taskInputSchema.safeParse(input);
   if (!parsed.success) return { error: "請填日期、對象同計劃。" };
   const { supabase, profile } = await requireUser();
-  const { name, plan, client_id, time, ...rest } = parsed.data;
+  const { name, plan, client_id, time, period, ...rest } = parsed.data;
   let taskName = name;
   if (client_id) {
     const { data: client, error: accessError } = await supabase.from("clients").select("id, info").eq("id", client_id).eq("owner_id", profile.id).maybeSingle();
@@ -17,7 +17,7 @@ export async function createTask(input: unknown) {
     taskName = decryptColumn(client_id,"info",client.info).name || name;
   }
   const id = randomUUID();
-  const { error } = await supabase.from("daily_tasks").insert({ id, owner_id: profile.id, ...rest, info: encryptColumn(id, "info", {}, { name: taskName, plan, result: "", client_id: client_id || "", time: time || "" }) });
+  const { error } = await supabase.from("daily_tasks").insert({ id, owner_id: profile.id, ...rest, info: encryptColumn(id, "info", {}, { name: taskName, plan, result: "", client_id: client_id || "", time: time || "", period: period || "" }) });
   if (error) return { error: "儲存失敗，請稍後再試。" };
   revalidatePath("/today"); revalidatePath("/review"); revalidatePath("/board"); revalidatePath("/seasons"); revalidatePath("/activity");
   if (client_id) revalidatePath(`/clients/${client_id}`);

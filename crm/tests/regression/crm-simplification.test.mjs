@@ -121,7 +121,7 @@ test('WhatsApp breakfast preview has no scores and confirmation sends no activit
   const { applyDraft, describeDraft, hasContent } = await load('lib/whatsapp/apply.ts');
   const extraction = { client: {}, fields: [], checks: [], stage: '', season: '', activity: { r: 3, n: 0, a: 1, rr: 1, nr: 0, pc: 0 }, appointment: { slot: 'breakfast', text: '九點早餐' }, date: day, summary: '' };
   const draft = { texts: [], today: day, target: { mode: 'none' }, extraction };
-  assert.match(describeDraft(draft), /早餐 appointment：九點早餐/);
+  assert.match(describeDraft(draft), /上午 appointment：九點早餐/);
   assert.doesNotMatch(describeDraft(draft), /A\+1|RR\+1|活動分/);
   assert.equal(hasContent({ ...draft, extraction: { ...extraction, appointment: { slot: '', text: '' } } }), false);
   const calls = [];
@@ -178,6 +178,10 @@ test('linked task validates ownership and uses the actual client name',async()=>
   assert.notEqual((await createTask({...input,client_id:'00000000-0000-4000-8000-000000000099'})).error,'');
   assert.notEqual((await createTask({...input,time:'29:99'})).error,'');
   assert.equal(db.tables.daily_tasks.length,1);
+  assert.equal((await createTask({...input,time:'',period:'afternoon'})).error,'');
+  const periodRow=db.tables.daily_tasks[1],periodInfo=secure.decryptColumn(periodRow.id,'info',periodRow.info);
+  assert.equal(periodInfo.period,'afternoon');assert.equal(periodInfo.time || '','');
+  assert.equal('period' in periodRow,false);
 });
 
 test('calendar rejects cross-owner links and preserves valid encrypted linking metadata',async()=>{

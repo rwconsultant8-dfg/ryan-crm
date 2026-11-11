@@ -5,10 +5,10 @@ import { usePathname } from "next/navigation";
 export default function NavLinks({ isAdmin }: { isAdmin: boolean }) {
   const path = usePathname();
   const links = isAdmin ? [
-    { href: "/admin", label: "Ryan大佬bot總覽", mark: "⌘" },
+    { href: "/admin", label: "ZEST 團隊助手總覽", mark: "⌘" },
     { href: "/today", label: "每日任務", mark: "◈" },
     { href: "/board", label: "客戶", mark: "▥" },
-    { href: "/activity", label: "日曆", mark: "▦" },
+    { href: "/activity", label: "團隊日曆", mark: "▦" },
     { href: "/business", label: "生意表", mark: "↗" },
     { href: "/updates", label: "同事更新", mark: "▤" },
     { href: "/admin/staff", label: "員工帳戶", mark: "♙" },

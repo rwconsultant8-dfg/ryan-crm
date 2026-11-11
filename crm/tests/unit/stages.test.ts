@@ -45,7 +45,7 @@ describe("表格定義", () => {
 describe("審計顯示", () => {
   it("欄位名轉中文", () => {
     expect(fieldLabel("form_rr.family")).toBe("了解客戶・1) 家庭");
-    expect(fieldLabel("appts.lunch")).toBe("午餐 appointment");
+    expect(fieldLabel("appts.lunch")).toBe("中午 appointment");
     expect(fieldLabel("focus.plan")).toBe("宣告 PDCA 焦點");
     expect(fieldLabel("nr")).toBe("討論財策需要／開口要求次數");
     expect(fieldLabel("form_nr2.budget_text")).toBe("客戶需要・金額");

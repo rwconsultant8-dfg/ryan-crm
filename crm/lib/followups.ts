@@ -1,10 +1,11 @@
 import type {MeetingSummary} from "./meeting";
 import type { Task } from "./planner";
+import {appointmentTimeLabel} from "./activity";
 
 export type ClientOption = { id: string; name: string };
 export type ContactEvent = { id: string; at: string; day?: string; text: string; kind: "contact" | "note"; meeting?:MeetingSummary; source?:string };
 export const isOpenTask = (t: Pick<Task, "status">) => t.status === "planned" || t.status === "blocked";
-export const taskOrder = (t: Pick<Task, "day" | "time">) => `${t.day}T${t.time || "23:59"}`;
+export const taskOrder = (t: Pick<Task, "day" | "time" | "period">) => `${t.day}T${t.time || (t.period ? {morning:"06:00",noon:"12:00",afternoon:"14:00",evening:"18:00"}[t.period] : "23:59")}`;
 export const overdueTask = (t: Pick<Task, "day" | "time" | "status">, today: string, time = "00:00") =>
   isOpenTask(t) && (t.day < today || (t.day === today && Boolean(t.time) && t.time! < time));
 export function nextClientTask(tasks: Task[], clientId: string) {
@@ -37,7 +38,8 @@ export function calendarEntries(days: { day: string; appts: Record<string,string
 /** 看板、客戶頁及缺少下一步提示，共用任務與日曆嘅最早安排。 */
 export function nextClientStep(tasks:Task[], appointments:CalendarEntry[], clientId:string, today:string) {
   const task = nextClientTask(tasks,clientId);
-  const candidates:{day:string;time?:string;plan:string}[] = task ? [{day:task.day,time:task.time,plan:task.plan}] : [];
+  const candidates:{day:string;time?:string;period?:Task["period"];plan:string}[] = task ? [{day:task.day,time:task.time,period:task.period,plan:task.plan}] : [];
   for (const a of appointments) if (a.client_id===clientId && a.day>=today) candidates.push({day:a.day,time:a.time,plan:a.text || `${a.label} appointment`});
-  return candidates.sort((a,b)=>`${a.day}T${a.time || "23:59"}`.localeCompare(`${b.day}T${b.time || "23:59"}`))[0] || null;
+  const next=candidates.sort((a,b)=>taskOrder(a).localeCompare(taskOrder(b)))[0];
+  return next ? {...next,time:appointmentTimeLabel(next.time,next.period)} : null;
 }

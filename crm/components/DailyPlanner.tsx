@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import {appointmentTimeLabel} from "@/lib/activity";
 import { useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { CATEGORIES, PLAN_STAGES, STATUSES, type Task } from "@/lib/planner";
@@ -15,7 +16,7 @@ function TaskRow({ task, readOnly, onComplete }: { task: Task; readOnly: boolean
   const router = useRouter();
   return <article className={`planner-task task-${task.status}`}>
     <div className="row"><span className="quest-dot" aria-hidden="true">{task.status === "done" ? "✓" : "◇"}</span><strong>{task.name}</strong><span className="spacer"/><span className={`badge ${task.status === "done" ? "badge-green" : task.status === "blocked" ? "badge-yellow" : "badge-grey"}`}>{STATUSES[task.status]}</span></div>
-    <span className="small muted">{task.time || "時間待定"} · {PLAN_STAGES[task.stage]}</span>
+    <span className="small muted">{appointmentTimeLabel(task.time,task.period) || "時間待定"} · {PLAN_STAGES[task.stage]}</span>
     <p>{task.plan}</p>
     {task.client_id && <Link className="small" href={`/clients/${task.client_id}`}>打開客戶檔案 ↗</Link>}
     {readOnly ? <p className="small">{task.result || "未有結果記錄"}</p> : <details><summary>記低結果／完成任務</summary>

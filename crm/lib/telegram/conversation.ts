@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fileScope, listBotFiles, readBotFile, saveBotFile } from "./files";
 import type { Draft } from "../whatsapp/apply";
+import {appointmentTimeLabel} from "../activity";
 
 export type CoachTurn = { user: string; assistant: string };
 
@@ -35,7 +36,7 @@ export function savedCoachReply(draft: Draft): string {
   const tasks = extraction.tasks ?? [];
   const lines = [name ? `已幫你記低「${name}」${extraction.meeting?.occurred ? "嘅見面重點" : "嘅資料"}。` : ""];
   if (tasks.length) {
-    lines.push(...tasks.slice(0, 3).map((task) => `已${task.operation === "reschedule" ? "改好" : "記低"}「${task.name}」：${task.new_day || task.day}${task.time ? ` ${task.time}` : ""}${task.plan ? `，${task.plan.slice(0, 100)}` : ""}。`));
+    lines.push(...tasks.slice(0, 3).map((task) => `已${task.operation === "reschedule" ? "改好" : "記低"}「${task.name}」：${task.new_day || task.day}${appointmentTimeLabel(task.time,task.period) ? ` ${appointmentTimeLabel(task.time,task.period)}` : ""}${task.plan ? `，${task.plan.slice(0, 100)}` : ""}。`));
     if (tasks.length > 3) lines.push(`其餘 ${tasks.length - 3} 項安排亦已記低。`);
   }
   if (!name && !tasks.length) lines.push("已幫你記低，可以喺 app 睇返。");

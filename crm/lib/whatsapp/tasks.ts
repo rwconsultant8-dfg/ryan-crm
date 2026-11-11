@@ -5,6 +5,7 @@ import { decryptColumn, encryptColumn } from "../secure";
 import { taskInputSchema } from "../planner";
 import { isDate } from "../weeks";
 import { z } from "zod";
+import {DAY_PERIODS,type DayPeriod} from "../activity";
 
 export const taskMessageSchema = taskInputSchema.extend({
   operation: z.enum(["create", "update", "reschedule"]),
@@ -31,7 +32,7 @@ export async function prepareTasks(db: SupabaseClient, owner: string, input: Tas
       }
       const id = randomUUID();
       output.push({ operation: "create", id, day:t.day, category:t.category, stage:t.stage, status:t.status,
-        info: encryptColumn(id,"info",{}, { name,plan:t.plan,result:t.result,client_id:t.client_id || "",time:t.time || "" }) });
+        info: encryptColumn(id,"info",{}, { name,plan:t.plan,result:t.result,client_id:t.client_id || "",time:t.time || "",period:t.period || "" }) });
       continue;
     }
     const { data, error } = await db.from("daily_tasks").select("*").eq("owner_id",owner).eq("day",t.day).eq("category",t.category);
@@ -48,18 +49,21 @@ export async function prepareTasks(db: SupabaseClient, owner: string, input: Tas
       if (row.status !== "planned" && row.status !== "blocked") throw new Error("呢項安排已完成或已取消，請核對要改期嘅安排。");
       if (t.client_id && t.client_id !== (original.client_id || "")) throw new Error("改期唔可以更改原本客戶連結。");
       if (t.status !== "planned") throw new Error("改期後嘅安排必須係未完成。");
-      const day = t.new_day || row.day, time = t.time || original.time || "";
-      if (day === row.day && time === (original.time || "")) throw new Error("請講返新日期或新時間；原有安排未有改動。");
+      const day = t.new_day || row.day;
+      const time = t.time || (t.period ? "" : original.time || "");
+      const period = t.time ? "" : t.period || original.period || "";
+      if (day === row.day && time === (original.time || "") && period === (original.period || "")) throw new Error("請講返新日期或新時間／時段；原有安排未有改動。");
       if (output.some(x => x.id === row.id)) throw new Error("同一安排有多項更新，請合併提交。");
-      const note = `改期至 ${day}${time ? ` ${time}` : ""}`;
+      const when = time || DAY_PERIODS[period as DayPeriod] || "";
+      const note = `改期至 ${day}${when ? ` ${when}` : ""}`;
       output.push({ operation:"update", id:row.id, day:row.day, category:row.category, stage:row.stage, status:"cancelled", updated_at:row.updated_at,
         info:encryptColumn(row.id,"info",row.info,{result:[original.result,note].filter(Boolean).join("\n")}) });
       const id = randomUUID();
       output.push({ operation:"create", id, day, category:row.category, stage:row.stage, status:"planned",
-        info:encryptColumn(id,"info",{}, {...original,time,result:""}), rescheduledFrom:{day:row.day,time:original.time || ""} });
+        info:encryptColumn(id,"info",{}, {...original,time,period,result:""}), rescheduledFrom:{day:row.day,time:original.time || DAY_PERIODS[original.period as DayPeriod] || ""} });
       continue;
     }
-    if ((t.client_id!==undefined && t.client_id!==(original.client_id || "")) || (t.time!==undefined && t.time!=="" && t.time!==(original.time || ""))) throw new Error("更新結果唔會改動原定客戶連結或時間，請取消原任務再重新安排。");
+    if ((t.client_id!==undefined && t.client_id!==(original.client_id || "")) || (t.time!==undefined && t.time!=="" && t.time!==(original.time || "")) || (t.period && t.period !== original.period)) throw new Error("更新結果唔會改動原定客戶連結或時間，請取消原任務再重新安排。");
     if (output.some(x => x.id === row.id)) throw new Error("同一待辦有多項更新，請合併成一個結果。");
     output.push({ operation:"update", id:row.id, day:row.day, category:row.category, stage:row.stage, status:t.status, updated_at:row.updated_at,
       info:encryptColumn(row.id,"info",row.info,{ result:t.result }) });

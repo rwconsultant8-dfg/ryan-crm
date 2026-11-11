@@ -2,7 +2,7 @@ import "server-only";
 import {normalizeAge,ageLabel} from "../age";
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { APPT_SLOTS } from "../activity";
+import { APPT_SLOTS, appointmentTimeLabel } from "../activity";
 import { apptRecordId } from "../activity-data";
 import { decryptColumn, encryptColumn } from "../secure";
 import { ALL_CHECKS, FORMS, GENDERS, MARITAL, stageLabel, type FormColumn } from "../stages";
@@ -79,13 +79,13 @@ export function describeDraft(d: Draft): string {
   if (e.tasks?.some(t=>t.operation==="reschedule") && !e.meeting?.occurred) {
     const changes = d.taskItems?.filter(t=>t.rescheduledFrom).map(t=>{
       const info=decryptColumn(t.id,"info",t.info),from=t.rescheduledFrom!;
-      return `${info.name}\n原定：${from.day}${from.time ? ` ${from.time}` : ""}\n改為：${t.day}${info.time ? ` ${info.time}` : ""}\n安排：${info.plan}`;
+      return `${info.name}\n原定：${from.day}${from.time ? ` ${from.time}` : ""}\n改為：${t.day}${appointmentTimeLabel(info.time,info.period) ? ` ${appointmentTimeLabel(info.time,info.period)}` : ""}\n安排：${info.plan}`;
     }) || [];
     const others=(e.tasks || []).filter(t=>t.operation!=="reschedule").map(t=>`${t.day} · ${t.name}：${t.plan}（${STATUSES[t.status]}）`);
     return ["改期預覽（未儲存）：",...changes,...others,"確認後會取消舊安排，加入新安排，並保留原記錄。","回覆「確認」儲存，「取消」放棄；想補充就直接再講。"].join("\n\n");
   }
   if (e.tasks?.length && !e.meeting?.occurred && !hasClientFacts(e)) return ["幫你整理咗（未儲存）：", ...e.tasks.map(t =>
-    `${t.day}${t.time ? ` ${t.time}` : ""} · ${CATEGORIES[t.category]} · ${t.name}\n${PLAN_STAGES[t.stage]}｜${STATUSES[t.status]}\n計劃：${t.plan}${t.result ? `\n結果：${t.result}` : ""}`),
+    `${t.day}${appointmentTimeLabel(t.time,t.period) ? ` ${appointmentTimeLabel(t.time,t.period)}` : ""} · ${CATEGORIES[t.category]} · ${t.name}\n${PLAN_STAGES[t.stage]}｜${STATUSES[t.status]}\n計劃：${t.plan}${t.result ? `\n結果：${t.result}` : ""}`),
     "今次只更新待辦；預計 stage 唔會改動客戶目前進度。", "回覆「確認」儲存，「取消」放棄；想補充就直接再講。"].join("\n\n");
   const lines: string[] = ["📝 幫你整理咗（未儲存）："];
   if (d.target.mode === "existing") {
@@ -121,9 +121,9 @@ export function describeDraft(d: Draft): string {
     if(e.meeting.blocker)lines.push(`卡住原因：${e.meeting.blocker}`);
     if(e.meeting.needs_help)lines.push("需要 Ryan 協助");
     lines.push(`下一步：${e.meeting.next_step || "未交代"}\n日期：${e.meeting.next_day || "未定，請補充"}`);
-    if(e.tasks?.length)lines.push(`\n【同步加入待辦】\n${e.tasks.map(t=>`${t.day}${t.time ? ` ${t.time}` : ""} · ${t.name}：${t.plan}`).join("\n")}`);
+    if(e.tasks?.length)lines.push(`\n【同步加入待辦】\n${e.tasks.map(t=>`${t.day}${appointmentTimeLabel(t.time,t.period) ? ` ${appointmentTimeLabel(t.time,t.period)}` : ""} · ${t.name}：${t.plan}`).join("\n")}`);
   }
-  if(e.tasks?.length && !e.meeting?.occurred)lines.push(`\n【下一步安排】\n${e.tasks.map(t=>`${t.day}${t.time?` ${t.time}`:""} · ${t.name}：${t.plan}`).join("\n")}`);
+  if(e.tasks?.length && !e.meeting?.occurred)lines.push(`\n【下一步安排】\n${e.tasks.map(t=>`${t.day}${appointmentTimeLabel(t.time,t.period)?` ${appointmentTimeLabel(t.time,t.period)}`:""} · ${t.name}：${t.plan}`).join("\n")}`);
   if (e.appointment.slot) {
     lines.push(`\n📅 日曆（${shortDate(e.date)}）`);
     if (e.appointment.slot && e.appointment.text.trim()) {

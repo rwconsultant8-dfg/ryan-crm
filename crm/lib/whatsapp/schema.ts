@@ -105,12 +105,13 @@ export const extractionJsonSchema = {
     client_names: {type:"array",items:{type:"string"}},
     meeting:meetingJsonSchema,
     tasks: { type: "array", items: { type: "object", additionalProperties: false,
-      required: ["operation", "day", "category", "stage", "name", "plan", "status", "result", "task_id", "new_day", "time"],
+      required: ["operation", "day", "category", "stage", "name", "plan", "status", "result", "task_id", "new_day", "time", "period"],
       properties: {
         operation: { type: "string", enum: ["create", "update", "reschedule"] }, day: { type: "string" },
         category: { type: "string", enum: ["appointment", "planning", "review", "preparation", "service"] },
         stage: { type: "string", enum: ["", "relationship", "needs", "presentation", "closing", "recruitment"] },
         task_id: {type:"string"}, new_day: {type:"string"}, time: {type:"string"},
+        period: {type:"string",enum:["","morning","noon","afternoon","evening"]},
         name: { type: "string" }, plan: { type: "string" }, result: { type: "string" },
         status: { type: "string", enum: ["planned", "done", "blocked", "cancelled"] }
       }

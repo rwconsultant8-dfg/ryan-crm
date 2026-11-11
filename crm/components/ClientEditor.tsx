@@ -45,7 +45,7 @@ export function ClientStageForm({ phase, forms, info = {}, readOnly, onChange }:
       {phase === "MEETING" && (
         <section className="client-fact-checklist" aria-label="Fact Finding 資料 checklist">
           <h2>資料 checklist</h2>
-          <p className="muted small">已填資料會自動打 tick · {checklist.filter((item) => item.complete).length} / {checklist.length}</p>
+          <p className="muted small">已填資料會自動打 tick。</p>
           <ul className="client-check-grid">
             {checklist.map((item) => (
               <li key={item.key} className={item.complete ? "complete" : ""}>

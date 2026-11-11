@@ -2,7 +2,7 @@
 
 保險團隊準客戶跟進系統，用嚟取代紙本《Prospect Check List》。手機同電腦都用得，介面係繁體中文。
 
-**已有：** 登入、權限、準客戶卡、客戶進度五欄看板、人脈網三欄、約會日曆（早餐／午餐／下午茶／晚飯）、每月生意表、每日待辦及團隊 Review、Telegram 助手、主管總覽、員工帳戶管理、審計記錄。
+**已有：** 登入、權限、準客戶卡、客戶進度五欄看板、人脈網三欄、約會日曆（上午／中午／下午／晚上）、每月生意表、每日待辦及團隊 Review、Telegram 助手、主管總覽、員工帳戶管理、審計記錄。
 
 ### 2026-11-06 教練 File 中文檔名修復
 
@@ -68,7 +68,7 @@
 - 「四季人脈」改為「人脈網」：相約見面 → 深化跟進 → 落實方案。已簽客戶獨立放在下方，可拖入／撤回、加入生意表。
 - 沿用 `/seasons` 連結及資料庫欄位，毋須資料庫遷移。SPRING、WINTER、null 對應相約見面；AUTUMN 對應深化跟進；SUMMER 對應落實方案。舊記錄不刪除，新操作只寫入三個有效分類。
 - 「我的看板」五欄：相約見面（RR／NR1）、深化跟進（NR2／FNA）、落實方案（PC）、已簽單、已出單。保留原有表格細階段，新拖拉寫入對應代表階段。
-- 「活動分」改為「約會日曆」，取消活動次數輸入、總分、KPI 及主管分數。早餐預設 8–10AM，午餐、下午茶、晚飯沿用原有時段。儲存只更新加密約會，不改舊次數。
+- 「活動分」改為「約會日曆」，取消活動次數輸入、總分、KPI 及主管分數。上午06:00–11:59、中午12:00–13:59、下午14:00–17:59、晚上18:00–翌日05:59；Telegram 講明鐘點或時段會自動歸位，只有時段時不會代填鐘點。儲存只更新加密約會，不改舊次數。
 - WhatsApp 支援早餐約會，預覽不再顯示活動分，確認約會時亦不增加次數。
 - PDCA 頁面及導覽入口停用，舊 `/pdca` 連結轉到約會日曆；保留歷史資料及審計記錄。
 - 本機驗證：6 項回歸測試通過（歷史分類、五欄分組、早餐加密儲存與重新讀取、保留舊約會與活動次數、日期驗證、WhatsApp 不增加分數）。TypeScript／TSX 語法檢查通過。
@@ -168,7 +168,7 @@ Supabase → **Authentication → URL Configuration** → **Site URL** 填 Verce
 
 | 角色 | 做到乜 |
 |---|---|
-| **員工** | 「約會日曆」記早餐／午餐／下午茶／晚飯約會；「人脈網」將客拖去相約見面／深化跟進／落實方案（或者喺客戶頁用「人脈分類」選單揀），簽得就拖去最右「✍️ 已簽」，再撳「加入本月生意表」；「生意表」每月記客名、產品、AFYP、Revenue、佣金，同月目標比較（金額可以打 12000 或 1.2萬）；「客戶進度」睇自己啲客；「＋ 新增客戶」開卡；撳卡入去逐頁填 RR／NR1／NR2／FNA／PC；拖拉卡片轉階段（手機長按再拖，或者喺客戶頁用「階段」選單）。只可以睇、改自己嘅客。 |
+| **員工** | 「約會日曆」記上午／中午／下午／晚上約會；「人脈網」將客拖去相約見面／深化跟進／落實方案（或者喺客戶頁用「人脈分類」選單揀），簽得就拖去最右「✍️ 已簽」，再撳「加入本月生意表」；「生意表」每月記客名、產品、AFYP、Revenue、佣金，同月目標比較（金額可以打 12000 或 1.2萬）；「客戶進度」睇自己啲客；「＋ 新增客戶」開卡；撳卡入去逐頁填 RR／NR1／NR2／FNA／PC；拖拉卡片轉階段（手機長按再拖，或者喺客戶頁用「階段」選單）。只可以睇、改自己嘅客。 |
 | **Ryan（主管）** | 「主管總覽」睇全組：每人每個階段幾多客、邊個客具備簽單條件；每人約會日曆同本月 AFYP／佣金 vs 目標；撳員工名睇佢嘅看板、人脈網、約會日曆同生意表、撳客名睇詳情（唯讀）。「員工帳戶」開帳戶、停用／重新啟用、改名、重設密碼。「審計記錄」睇所有修改記錄。 |
 
 **簽單條件：** RR 四格 ＋ NR2 四格全部剔晒，張卡自動變綠色「具備簽單條件」；未齊就顯示仲差邊幾格。
@@ -254,7 +254,7 @@ health工作不會進入客戶草稿或寫入客戶。通過／失敗只記代�
 
 ## Telegram research and document assistant
 
-Ryan大佬bot can plan and execute bounded tools through the existing private Codex queue. The model produces validated tool arguments; server code performs the action and returns receipts on the next queue turn. The worker never receives bot tokens or Supabase credentials. Ordinary chat and tool jobs do not enter the customer-write flow. Each tool continuation rechecks the current active Telegram binding, consumes its lease before effects, and stops after six steps.
+ZEST 團隊助手 can plan and execute bounded tools through the existing private Codex queue. The model produces validated tool arguments; server code performs the action and returns receipts on the next queue turn. The worker never receives bot tokens or Supabase credentials. Ordinary chat and tool jobs do not enter the customer-write flow. Each tool continuation rechecks the current active Telegram binding, consumes its lease before effects, and stops after six steps.
 
 Supported tasks:
 
