@@ -6,7 +6,10 @@ import { deleteClientAction, moveSeasonAction, moveStageAction, saveFormAction, 
 import InfoFields from "./InfoFields";
 import { NO_SEASON, SEASONS, type SeasonColumn } from "@/lib/seasons";
 import {
+  FOLLOW_UPS,
   FORMS,
+  INFO_KEYS,
+  INFO_LABELS,
   GENDERS,
   MARITAL,
   MEETING_TIPS,
@@ -14,11 +17,14 @@ import {
   STAGES,
   fnaSummary,
   missingChecks,
+  proposalUrl,
+  stageLabel,
   type CheckKey,
   type Checks,
   type Field,
   type FormColumn,
   type FormDef,
+  type FollowUp,
   type Stage,
 } from "@/lib/stages";
 
@@ -33,7 +39,7 @@ export type EditorClient = {
   forms: Record<FormColumn, Record<string, string>>;
 };
 
-type Tab = "info" | FormColumn;
+type Tab = "info" | FormColumn | FollowUp;
 
 const money = (n: number | null) =>
   n === null ? "—" : `HK$ ${n.toLocaleString("en-HK", { maximumFractionDigits: 2 })}`;
@@ -67,7 +73,10 @@ function FieldInput({
       </div>
     );
   }
-  if (f.type === "text" || f.type === "number" || f.type === "date") {
+  if (f.type === "checkbox") {
+    return <input type="checkbox" checked={value === "true"} disabled={disabled} onChange={(e) => onChange(e.target.checked ? "true" : "")} />;
+  }
+  if (f.type === "text" || f.type === "number" || f.type === "date" || f.type === "url") {
     return (
       <input
         type={f.type === "number" ? "text" : f.type}
@@ -132,10 +141,11 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
       run(() => updateInfoAction(client.id, info), () => clearDirty("info"));
       return;
     }
-    const def = FORMS.find((f) => f.column === tab)!;
+    const followUp = FOLLOW_UPS.find((item) => item.key === tab)?.key;
+    const def = FORMS.find((f) => f.column === (followUp ? "form_pc" : tab))!;
     const cs: Partial<Record<CheckKey, boolean>> = {};
     for (const c of def.checks?.items ?? []) cs[c.key] = checks[c.key];
-    run(() => saveFormAction(client.id, def.stage, forms[tab], cs), () => clearDirty(tab));
+    run(() => saveFormAction(client.id, def.stage, forms[def.column], cs, followUp), () => clearDirty(tab));
   };
 
   const changeStage = (to: Stage) => {
@@ -178,19 +188,22 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
     run(() => deleteClientAction(client.id));
   };
 
-  const setField = (col: FormColumn, key: string, v: string) => {
+  const setField = (col: FormColumn, key: string, v: string, activeTab: Tab = col) => {
     setForms((f) => ({ ...f, [col]: { ...f[col], [key]: v } }));
-    markDirty(col);
+    markDirty(activeTab);
   };
 
-  const renderForm = (def: FormDef) => {
+  const renderForm = (def: FormDef, followUp?: FollowUp) => {
     const values = forms[def.column] ?? {};
     const fna = def.stage === "FNA" ? fnaSummary(values) : null;
+    const linkedProposal = proposalUrl(client.forms.form_pc.proposal_url ?? "");
     return (
       <div>
-        <p className="muted small" style={{ marginTop: 0 }}>
-          <b>{def.title}</b> — {def.timing}
-        </p>
+        {!followUp && (
+          <p className="muted small" style={{ marginTop: 0 }}>
+            <b>{def.title}</b> — {def.timing}
+          </p>
+        )}
         {def.tips && (
           <ul className="form-tips">
             {def.tips.map((t) => (
@@ -198,20 +211,50 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
             ))}
           </ul>
         )}
-        {def.sections.map((s, i) => (
+        {def.stage === "RR" && (
+          <fieldset className="checklist">
+            <legend>基本資料 Checklist</legend>
+            {INFO_KEYS.map((key) => (
+              <label className="check-row" key={key}>
+                <input type="checkbox" checked={Boolean(info[key].trim())} disabled />
+                <span>{INFO_LABELS[key]}</span>
+              </label>
+            ))}
+            {dirty.has("info") && <p className="muted small">基本資料未儲存</p>}
+          </fieldset>
+        )}
+        {def.sections.filter((section) => section.followUp === followUp).map((s, i) => (
           <section key={i} className="form-section">
             {s.title && <h3>{s.title}</h3>}
             {s.note && <div className="section-note">{s.note}</div>}
             <div className={s.fields.some((f) => f.type === "rating") ? undefined : "form-grid"}>
-            {s.fields.map((f) => (
-              <label className="field" key={f.key}>
-                <span>
-                  {f.label}
-                  {f.hint && <em className="field-hint">{f.hint}</em>}
-                </span>
-                <FieldInput f={f} value={values[f.key] ?? ""} disabled={readOnly} onChange={(v) => setField(def.column, f.key, v)} />
-              </label>
-            ))}
+              {s.fields.map((f) => (
+                f.type === "checkbox" ? (
+                  <label className="check-row" key={f.key}>
+                    <FieldInput f={f} value={values[f.key] ?? ""} disabled={readOnly || pending} onChange={(v) => setField(def.column, f.key, v)} />
+                    <span>{f.label}</span>
+                  </label>
+                ) : (
+                  <div key={f.key}>
+                    <label className="field">
+                      <span>
+                        {f.label}
+                        {f.hint && <em className="field-hint">{f.hint}</em>}
+                      </span>
+                      <FieldInput f={f} value={values[f.key] ?? ""} disabled={readOnly || pending} onChange={(v) => setField(def.column, f.key, v, followUp ?? def.column)} />
+                      {f.type === "notes" && <small className="muted">每行一點</small>}
+                    </label>
+                    {f.type === "url" && linkedProposal && (
+                      <a href={linkedProposal} target="_blank" rel="noopener noreferrer">開啟計劃書</a>
+                    )}
+                    {f.type === "notes" && values[f.key]?.trim() && (
+                      <ul>
+                        {values[f.key].split("\n").filter((line) => line.trim()).map((line, index) => <li key={index}>{line.trim()}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                )
+              ))}
             </div>
           </section>
         ))}
@@ -265,20 +308,22 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
 
   const filled = (col: FormColumn) => {
     const def = FORMS.find((f) => f.column === col)!;
-    const keys = formFieldKeys(def);
+    const keys = formFieldKeys({ ...def, sections: def.sections.filter((section) => !section.followUp) });
     return { n: keys.filter((k) => (forms[col]?.[k] ?? "").trim() !== "").length, total: keys.length };
   };
   const tabs: { key: Tab; label: string; count?: string }[] = [
     { key: "info", label: "基本資料" },
     ...FORMS.map((f) => {
       const c = filled(f.column);
-      return { key: f.column as Tab, label: f.stage, count: `${c.n}/${c.total}` };
+      return { key: f.column as Tab, label: stageLabel(f.stage), count: `${c.n}/${c.total}` };
     }),
+    ...FOLLOW_UPS.map(({ key, label }) => ({ key, label })),
   ];
   const genderText = GENDERS.find((g) => g.value === info.gender)?.label;
   const maritalText = MARITAL.find((m) => m.value === info.marital)?.label;
   const meta = [info.age && `${info.age}歲`, genderText, info.occupation, maritalText].filter(Boolean).join(" · ");
   const doneChecks = 8 - missing.length;
+  const activeFollowUp = FOLLOW_UPS.find((item) => item.key === tab)?.key;
 
   return (
     <div>
@@ -327,7 +372,7 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
             <div className="chips">
               {missing.map((m) => (
                 <span key={m.label} className="chip">
-                  {m.stage}・{m.label}
+                  {stageLabel(m.stage)}・{m.label}
                 </span>
               ))}
             </div>
@@ -349,7 +394,7 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
             }}
           >
             {t.label}
-            {t.count && <span className="tab-count">{t.count}</span>}
+            {t.count && <span className="tab-count" aria-hidden="true">{t.count}</span>}
             {dirty.has(t.key) && <span className="dot" title="未儲存" />}
           </button>
         ))}
@@ -366,7 +411,7 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
             }}
           />
         ) : (
-          renderForm(FORMS.find((f) => f.column === tab)!)
+          renderForm(FORMS.find((f) => f.column === (activeFollowUp ? "form_pc" : tab))!, activeFollowUp)
         )}
 
         {!readOnly && (

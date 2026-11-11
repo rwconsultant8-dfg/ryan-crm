@@ -2,7 +2,7 @@ import { z } from "zod";
 import { isDate } from "./weeks";
 
 export const CATEGORIES = { appointment: "邀約", planning: "計劃", review: "檢討", preparation: "準備", service: "客戶服務" } as const;
-export const PLAN_STAGES = { "": "未指定", relationship: "建立關係／了解需要", needs: "客戶需要", presentation: "建議書", closing: "成交", recruitment: "招聘" } as const;
+export const PLAN_STAGES = { "": "未指定", relationship: "Fact Finding", needs: "Needs", presentation: "Presentation", closing: "Closing", recruitment: "招聘" } as const;
 export const STATUSES = { planned: "未完成", done: "已完成", blocked: "待跟進", cancelled: "已取消" } as const;
 export const taskInputSchema = z.object({
   day: z.string().refine(isDate, "日期無效"),
