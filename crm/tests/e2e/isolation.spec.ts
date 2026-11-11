@@ -52,7 +52,11 @@ test.describe.serial("權限隔離", () => {
 
     await expect(page.getByTestId("ready-box")).toContainText("仲差 8 格");
 
-    await page.getByRole("tab", { name: "RR" }).click();
+    await page.getByRole("tab", { name: "Fact Finding" }).click();
+    const checklist = page.getByRole("group", { name: "基本資料 Checklist" });
+    for (const label of ["姓名", "年齡", "性別", "職業", "婚姻狀況"]) {
+      await expect(checklist.getByLabel(label)).toBeChecked();
+    }
     await page.getByLabel("家庭").fill("已婚，一個仔讀小學");
     await page.getByLabel("A 點（現況）").fill("冇保障");
     for (const l of ["客人喜歡和信任你", "客人有穩定收入或淨資產", "客人與你有交情／共同經歷", "了解到客人的現況與目標"]) {
@@ -62,7 +66,8 @@ test.describe.serial("權限隔離", () => {
     await expect(page.getByText("已儲存")).toBeVisible();
     await expect(page.getByTestId("ready-box")).toContainText("仲差 4 格");
 
-    await page.getByRole("tab", { name: "NR2" }).click();
+    await page.getByRole("tab", { name: "Needs" }).click();
+    await page.getByLabel("醫療保險", { exact: true }).check();
     for (const l of ["確認客人的需要", "預演計劃相關內容", "確立客人預算金額", "確定下次會面時間"]) {
       await page.getByLabel(l, { exact: true }).check();
     }
@@ -76,6 +81,30 @@ test.describe.serial("權限隔離", () => {
     await expect(page.getByText("HK$ 18,000")).toBeVisible();
     await page.getByRole("button", { name: "儲存" }).click();
     await expect(page.getByText("已儲存")).toBeVisible();
+
+    await page.getByRole("tab", { name: "Presentation" }).click();
+    await page.getByLabel("計劃書連結（HTTPS）").fill("https://example.com/proposal");
+    await page.getByLabel("與客戶達成的共識").fill("同意先處理醫療保障");
+    await page.getByRole("button", { name: "儲存" }).click();
+    await expect(page.getByRole("link", { name: "開啟計劃書" })).toHaveAttribute("href", "https://example.com/proposal");
+
+    await page.getByRole("tab", { name: "Closing", exact: true }).click();
+    await page.getByLabel("留意事項").fill("確認文件\n約定跟進日期");
+    await page.getByRole("button", { name: "儲存" }).click();
+    await expect(page.getByText("已儲存")).toBeVisible();
+
+    await page.getByRole("tab", { name: "Referral Service" }).click();
+    await page.getByLabel("留意事項").fill("約定服務回訪");
+    await page.getByRole("button", { name: "儲存" }).click();
+    await expect(page.getByText("已儲存")).toBeVisible();
+
+    await page.reload();
+    await page.getByRole("tab", { name: "Needs" }).click();
+    await expect(page.getByLabel("醫療保險", { exact: true })).toBeChecked();
+    await page.getByRole("tab", { name: "Closing", exact: true }).click();
+    await expect(page.getByRole("listitem").filter({ hasText: "確認文件" })).toBeVisible();
+    await page.getByRole("tab", { name: "Referral Service" }).click();
+    await expect(page.getByRole("listitem").filter({ hasText: "約定服務回訪" })).toBeVisible();
 
     await page.goto("/clients/new");
     await page.getByLabel("姓名 *").fill(CLIENT_2);
@@ -177,7 +206,7 @@ test.describe.serial("權限隔離", () => {
     await expect(page.getByText("唯讀模式")).toBeVisible();
     await expect(page.getByLabel("姓名 *")).toBeDisabled();
     await expect(page.getByRole("button", { name: "儲存" })).toHaveCount(0);
-    await page.getByRole("tab", { name: "RR" }).click();
+    await page.getByRole("tab", { name: "Fact Finding" }).click();
     await expect(page.getByLabel("家庭")).toHaveValue("已婚，一個仔讀小學");
     await page.getByText(/^修改記錄/).click();
     await expect(page.getByText("RR・1) 家庭").first()).toBeVisible(); // 修改記錄

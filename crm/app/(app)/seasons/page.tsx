@@ -7,7 +7,7 @@ import { NO_SEASON, SEASONS, SIGNED_ZONE } from "@/lib/seasons";
 const COLUMNS: BoardColumn[] = [
   { key: NO_SEASON, label: "未分類" },
   ...SEASONS.map((s) => ({ key: s.key, label: `${s.emoji} ${s.label}` })),
-  { key: SIGNED_ZONE, label: "✍️ 已簽", done: true },
+  { key: SIGNED_ZONE, label: "✍️ Closing", done: true },
 ];
 
 export default async function SeasonsPage({ searchParams }: { searchParams: Promise<{ agent?: string }> }) {

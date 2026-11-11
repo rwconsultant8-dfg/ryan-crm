@@ -5,12 +5,12 @@ export type FormStage = "RR" | "NR1" | "NR2" | "FNA" | "PC";
 export type FormColumn = "form_rr" | "form_nr1" | "form_nr2" | "form_fna" | "form_pc";
 
 export const STAGES: { key: Stage; label: string; short: string }[] = [
-  { key: "RR", label: "RR（Fact Finding）", short: "RR" },
+  { key: "RR", label: "Fact Finding", short: "Fact Finding" },
   { key: "NR1", label: "NR1（開口）", short: "NR1" },
-  { key: "NR2", label: "NR2（深度發掘需要）", short: "NR2" },
+  { key: "NR2", label: "Needs（保障和財富增值）", short: "Needs" },
   { key: "FNA", label: "FNA 財務分析", short: "FNA" },
-  { key: "PC", label: "PC（提供方案／成交）", short: "PC" },
-  { key: "SIGNED", label: "已簽", short: "已簽" },
+  { key: "PC", label: "Presentation → 共識", short: "Presentation" },
+  { key: "SIGNED", label: "Closing", short: "Closing" },
   { key: "ISSUED", label: "已出單", short: "已出單" },
 ];
 
@@ -21,11 +21,17 @@ export const isStage = (v: unknown): v is Stage => typeof v === "string" && (STA
 export type Field = {
   key: string;
   label: string;
-  type?: "text" | "textarea" | "number" | "date" | "rating";
+  type?: "text" | "textarea" | "number" | "date" | "rating" | "checkbox" | "url" | "notes";
   hint?: string;
 };
 
-export type Section = { title?: string; note?: string; fields: Field[] };
+export const FOLLOW_UPS = [
+  { key: "closing", label: "Closing" },
+  { key: "referral_service", label: "Referral Service" },
+] as const;
+export type FollowUp = (typeof FOLLOW_UPS)[number]["key"];
+
+export type Section = { title?: string; note?: string; followUp?: FollowUp; fields: Field[] };
 
 export type CheckKey =
   | "rr_like_trust"
@@ -73,7 +79,7 @@ export const FORMS: FormDef[] = [
   {
     stage: "RR",
     column: "form_rr",
-    title: "RR（Fact Finding）",
+    title: "Fact Finding",
     timing: "多方面了解客人（事後紀錄）",
     tips: ["狀態決定環境，環境孕育內容", "建立信任目的：鑒定問題", "發掘痛點：A 點 → B 點"],
     sections: [
@@ -120,7 +126,7 @@ export const FORMS: FormDef[] = [
   {
     stage: "NR2",
     column: "form_nr2",
-    title: "NR2 深度發掘客人的需要",
+    title: "Needs（保障和財富增值）",
     timing: "根據和客人的深入討論所得出以下問題的結果（事後紀錄）",
     tips: [
       "透過發問、回應、總結，確立需要的價值／建立強烈的購買原因",
@@ -135,6 +141,17 @@ export const FORMS: FormDef[] = [
           { key: "risks", label: "了解客人實現人生願景過程中會遇見的風險和障礙", type: "textarea" },
           { key: "outcome", label: "了解到客人具體想達致的效果及如何面對風險", type: "textarea" },
         ],
+      },
+      {
+        title: "保障",
+        fields: [
+          { key: "product_life", label: "人壽保險", type: "checkbox" },
+          { key: "product_medical", label: "醫療保險", type: "checkbox" },
+        ],
+      },
+      {
+        title: "財富增值",
+        fields: [{ key: "product_savings", label: "儲蓄保險", type: "checkbox" }],
       },
       {
         title: "總結客人需要並配置產品",
@@ -173,9 +190,16 @@ export const FORMS: FormDef[] = [
   {
     stage: "PC",
     column: "form_pc",
-    title: "PC 提供全面的解決方案／成交",
+    title: "Presentation → 共識",
     timing: "事前準備：填寫好以下會面流程準備，會面時按計劃執行",
     sections: [
+      {
+        title: "客戶計劃書與共識",
+        fields: [
+          { key: "proposal_url", label: "計劃書連結（HTTPS）", type: "url" },
+          { key: "agreement", label: "與客戶達成的共識", type: "textarea" },
+        ],
+      },
       {
         title: "1. 重申上次會面已一致的配置總結方程式",
         note: "＊澄清有沒有新的想法，如有需由 NR2 再做",
@@ -221,6 +245,10 @@ export const FORMS: FormDef[] = [
           { key: "conf_confidence", label: "信心", type: "rating" },
         ],
       },
+      ...FOLLOW_UPS.map(({ key }) => ({
+        followUp: key,
+        fields: [{ key: `${key}_notes`, label: "留意事項", type: "notes" as const }],
+      })),
     ],
   },
 ];
@@ -277,3 +305,20 @@ export const MARITAL = [
 ];
 
 export const INFO_KEYS = ["name", "age", "gender", "occupation", "marital"] as const;
+
+export const INFO_LABELS: Record<(typeof INFO_KEYS)[number], string> = {
+  name: "姓名",
+  age: "年齡",
+  gender: "性別",
+  occupation: "職業",
+  marital: "婚姻狀況",
+};
+
+export function proposalUrl(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    if (url.protocol === "https:" && !url.username && !url.password) return url.href;
+  } catch {
+    return undefined;
+  }
+}

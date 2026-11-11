@@ -53,6 +53,6 @@ describe("審計顯示", () => {
     expect(fieldLabel("nr2_budget_set")).toBe("NR2 條件・確立客人預算金額");
   });
   it("階段變更顯示前後", () => {
-    expect(describeChanges({ stage: { old: "RR", new: "SIGNED" } }, "UPDATE")).toEqual([{ label: "階段", detail: "RR → 已簽" }]);
+    expect(describeChanges({ stage: { old: "RR", new: "SIGNED" } }, "UPDATE")).toEqual([{ label: "階段", detail: "Fact Finding → Closing" }]);
   });
 });

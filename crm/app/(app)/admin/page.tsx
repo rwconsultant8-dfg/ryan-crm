@@ -52,7 +52,7 @@ export default async function AdminOverview() {
           <b style={{ color: "var(--green)" }}>{readyCards.length}</b>
         </div>
         <div className="card">
-          已簽
+          Closing
           <b>{cards.filter((c) => c.stage === "SIGNED").length}</b>
         </div>
         <div className="card">

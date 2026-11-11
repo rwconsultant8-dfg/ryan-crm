@@ -156,7 +156,7 @@ test.describe.serial("WhatsApp 助手", () => {
     await page.getByTestId("client-card").filter({ hasText: NAME }).click();
     await page.waitForURL(/\/clients\//);
     await expect(page.getByTestId("ready-box")).toContainText("簽單條件 1/8");
-    await page.getByRole("tab", { name: "RR" }).click();
+    await page.getByRole("tab", { name: "Fact Finding" }).click();
     await expect(page.getByLabel("家庭")).toHaveValue(/・已婚，兩個女/);
     await page.getByText(/^修改記錄/).click();
     await expect(page.getByText("WhatsApp").first()).toBeVisible();
@@ -176,7 +176,7 @@ test.describe.serial("WhatsApp 助手", () => {
     await page.waitForURL(/\/clients\//);
     await page.getByRole("tab", { name: "FNA" }).click();
     await expect(page.getByLabel("收入（每月 HK$）")).toHaveValue("80000");
-    await page.getByRole("tab", { name: "RR" }).click();
+    await page.getByRole("tab", { name: "Fact Finding" }).click();
     await expect(page.getByLabel("家庭")).toHaveValue(/・已婚，兩個女/); // 舊內容仲喺度
     await expect(page.getByLabel("財務情況")).toHaveValue(/・月入 8 萬/);
   });

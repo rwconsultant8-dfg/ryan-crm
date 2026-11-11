@@ -7,14 +7,17 @@ import { requireUser } from "@/lib/auth";
 import { encryptColumn } from "@/lib/secure";
 import { isSeason } from "@/lib/seasons";
 import {
+  FOLLOW_UPS,
   FORMS,
   GENDERS,
   INFO_KEYS,
   MARITAL,
   formFieldKeys,
   isStage,
+  proposalUrl,
   type CheckKey,
   type FormStage,
+  type FollowUp,
 } from "@/lib/stages";
 
 export type ActionResult = { ok: true } | { ok: false, error: string };
@@ -48,11 +51,19 @@ export async function createClientAction(_prev: string | null, formData: FormDat
   redirect(`/clients/${id}`);
 }
 
-async function updateOwn(id: string, patch: Record<string, unknown>): Promise<ActionResult> {
+async function updateOwn(
+  id: string,
+  patch: Record<string, unknown>,
+  expected?: { column: string; value: Record<string, string> },
+): Promise<ActionResult> {
   const { supabase } = await requireUser();
-  const { data, error } = await supabase.from("clients").update(patch).eq("id", id).select("id");
+  let query = supabase.from("clients").update(patch).eq("id", id);
+  if (expected) query = query.eq(expected.column, JSON.stringify(expected.value));
+  const { data, error } = await query.select("id");
   if (error) return { ok: false, error: "儲存失敗：" + error.message };
-  if (!data || data.length !== 1) return { ok: false, error: NO_ACCESS };
+  if (!data || data.length !== 1) {
+    return { ok: false, error: expected ? "資料已更新或冇權限修改，請重新載入客戶卡再試。" : NO_ACCESS };
+  }
   revalidatePath("/board");
   revalidatePath(`/clients/${id}`);
   revalidatePath("/admin");
@@ -80,12 +91,16 @@ export async function saveFormAction(
   stage: FormStage,
   values: Record<string, string>,
   checks: Partial<Record<CheckKey, boolean>>,
+  followUp?: FollowUp,
 ): Promise<ActionResult> {
   const def = FORMS.find((f) => f.stage === stage);
-  if (!def) return { ok: false, error: "表格無效" };
+  if (!def || (followUp !== undefined && (stage !== "PC" || !FOLLOW_UPS.some((item) => item.key === followUp)))) {
+    return { ok: false, error: "表格無效" };
+  }
 
-  const allowed = formFieldKeys(def);
-  const fieldType = new Map(def.sections.flatMap((s) => s.fields).map((f) => [f.key, f.type]));
+  const sections = def.sections.filter((section) => section.followUp === followUp);
+  const allowed = formFieldKeys({ ...def, sections });
+  const fieldType = new Map(sections.flatMap((s) => s.fields).map((f) => [f.key, f.type]));
   const clean: Record<string, string> = {};
   for (const k of allowed) {
     const v = String(values[k] ?? "").slice(0, MAX_LEN);
@@ -96,7 +111,10 @@ export async function saveFormAction(
     if (v.trim() && t === "rating" && !/^(10|[1-9])$/.test(v.trim())) {
       return { ok: false, error: "自評要係 1–10" };
     }
-    clean[k] = v;
+    if (t === "url" && v.trim() && !proposalUrl(v)) {
+      return { ok: false, error: "請填寫有效嘅 HTTPS 計劃書連結" };
+    }
+    clean[k] = t === "checkbox" ? (v === "true" ? "true" : "") : v;
   }
 
   const existing = await loadEnc(id, def.column);
@@ -104,7 +122,7 @@ export async function saveFormAction(
 
   const patch: Record<string, unknown> = { [def.column]: encryptColumn(id, def.column, existing, clean) };
   for (const c of def.checks?.items ?? []) patch[c.key] = Boolean(checks[c.key]);
-  return updateOwn(id, patch);
+  return updateOwn(id, patch, { column: def.column, value: existing });
 }
 
 export async function moveStageAction(id: string, stage: string): Promise<ActionResult> {
