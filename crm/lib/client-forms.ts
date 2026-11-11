@@ -2,6 +2,14 @@ import { FORMS, NEED_PRODUCT_SECTIONS, formFor, type FormColumn, type FormDef, t
 
 export type ClientFormDef = Omit<FormDef, "phase"> & { phase: Stage };
 
+const retiredFactFields = new Set(["helped", "point_a", "point_b"]);
+const factFindingSections = formFor("RR").sections.map((section) => ({
+  ...section,
+  fields: section.fields.filter((field) => !retiredFactFields.has(field.key)).map((field, index) => ({
+    ...field, label: field.label.replace(/^\d+\)/, `${index + 1})`),
+  })),
+})).filter((section) => section.fields.length > 0);
+
 const proposal = formFor("PC");
 const serviceForm = (phase: "SIGNED" | "ISSUED", title: string, key: string): ClientFormDef => ({
   ...proposal, phase, title,
@@ -12,8 +20,11 @@ const serviceForm = (phase: "SIGNED" | "ISSUED", title: string, key: string): Cl
 
 /** 沿用現有加密欄位，舊資料毋須遷移。 */
 export const CLIENT_FORMS: ClientFormDef[] = [
-  { ...formFor("RR"), title: "Fact Finding", timing: "填寫已了解嘅客戶資料，checklist 會自動顯示完成項目。", tips: undefined, checks: undefined },
-  { ...formFor("NR1"), timing: "整理見面前需要準備的內容", tips: undefined, checks: undefined },
+  { ...formFor("RR"), title: "Fact Finding", timing: "填寫已了解嘅客戶資料，checklist 會自動顯示完成項目。", tips: undefined, checks: undefined, sections: factFindingSections },
+  {
+    ...formFor("NR1"), timing: "員工自由填寫見面準備。", tips: undefined, checks: undefined,
+    sections: [{ fields: [{ key: "notes", label: "見面準備（自由填寫）", type: "textarea" }] }],
+  },
   {
     ...formFor("NR2"), title: "Needs 保障和財富增值",
     timing: "勾選客戶已表達嘅產品需要，可選多項。", tips: undefined, checks: undefined,
@@ -51,7 +62,7 @@ export function factFindingChecklist(info: Record<string, string | undefined>, f
     ["name", "姓名"], ["age", "年齡"], ["gender", "性別"],
     ["occupation", "職業"], ["marital", "婚姻狀況"], ["customer_type", "客戶類別"],
   ].map(([key, label]) => ({ key: `info.${key}`, label, complete: Boolean(info[key]?.trim()) }));
-  const details = formFor("RR").sections.flatMap((section) => section.fields).map((field) => ({
+  const details = factFindingSections.flatMap((section) => section.fields).map((field) => ({
     key: `form_rr.${field.key}`, label: field.label, complete: Boolean(forms.form_rr[field.key]?.trim()),
   }));
   return [...basic, ...details];

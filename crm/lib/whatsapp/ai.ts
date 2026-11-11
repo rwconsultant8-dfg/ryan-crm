@@ -1,12 +1,16 @@
 import "server-only";
 import { aiClient, aiModel, usesGateway } from "../ai-client";
 import { ALL_CHECKS, FORMS, STAGES } from "../stages";
+import { CLIENT_FORMS } from "../client-forms";
 import { SEASONS } from "../seasons";
 import { extractionJsonSchema, extractionSchema, type Extraction } from "./schema";
 
 
 function fieldGuide(): string {
-  return FORMS.map((f) => {
+  return FORMS.map((storedForm) => {
+    const f = storedForm.stage === "RR" || storedForm.stage === "NR1"
+      ? CLIENT_FORMS.find((form) => form.stage === storedForm.stage)!
+      : storedForm;
     const lines = f.sections.flatMap((s) => s.fields.map((x) => `  - ${f.column}.${x.key}：${x.label}${x.hint ? `（${x.hint}）` : ""}${x.type === "checkbox" ? "（產品選項：明確需要填 true，明確取消填 false；冇提及唔填）" : ""}`));
     for (const c of f.checks?.items ?? []) if (c.fill) lines.push(`  - ${f.column}.${c.fill.key}：${c.label}（${c.fill.label}）`);
     return `${f.title}（${f.timing}）\n${lines.join("\n")}`;
@@ -86,11 +90,11 @@ ${fieldGuide()}
 - 娛樂及興趣→form_rr.hobbies：明確講出嘅嗜好、運動、旅遊及休閒活動。
 - 財務→form_rr.finance：收入、支出、資產、負債及現金流等客觀資料。已講明金額、幣種、期間時，另填對應form_fna欄：income=每月收入、expense=每月支出、assets=資產、liabilities=負債，明細放相應*_note；幣種／期間唔明只留財務文字，唔估、不擅自換算。
 - 性格及人生目標→form_rr.personality：只放明確性格、價值取向及人生方向，例如「做事謹慎」「希望60歲退休」。唔可以因為50幾歲、有子女、收入高或快退休而自行推論佢保守、重視家庭、需要退休計劃。
-- 幫助過對方→form_rr.helped：實際已提供嘅協助及共同經歷；未做嘅建議唔當成已幫助。
 - 理財知識及觀念→form_rr.knowledge：客戶對理財、保險及風險嘅認識、看法；唔好混入顧問自己嘅建議。
 - 現有配置→form_rr.existing：已持有嘅保單、儲蓄、投資及供款安排。想買／考慮緊唔等於已持有。
 - 鑑定需要→form_rr.needs：客戶明確表達嘅問題、需要或要求；唔可以由年齡、家庭或財務背景自行推論。
-- A點／B點、價值觀／願景／風險／效果：只有原文明確交代先填，唔好為填滿表格複製整段客戶背景。事前準備、產品設計、推銷說法只喺員工明確交代相關內容時記錄，唔好自動生成。
+- 見面準備→form_nr1.notes：只有員工明確交代嘅見面準備先記錄，保留自由填寫內容，唔拆成多個問題，唔自動生成準備或推銷說法。
+- 價值觀／願景／風險／效果：只有原文明確交代先填，唔好為填滿表格複製整段客戶背景。產品設計、推銷說法只喺員工明確交代相關內容時記錄，唔好自動生成。
 - 先辨認每句嘅人物、事實／計劃、時間、金額同不確定程度，再揀最直接欄位。冇資料嘅欄位留空；唔追求填滿，唔用性格、人生目標、現況做雜項收集欄。
 - 回覆前逐項檢查：目前年齡有冇擺基本資料？家庭事件係邊個發生？金額係月／年及咩幣種？目標有冇誤當成現況？有冇原文未講嘅推論？
 

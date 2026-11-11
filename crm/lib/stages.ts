@@ -143,6 +143,7 @@ export const FORMS: FormDef[] = [
           { key: "common_issues", label: "普遍同類客人會面對的問題和挑戰", type: "textarea" },
           { key: "point_c", label: "客人需要明白的概念／知識／故事（C 點）", type: "textarea" },
           { key: "summary", label: "總結客人的痛點，並表達自己能為對方創造的價值", type: "textarea" },
+          { key: "notes", label: "見面準備（自由填寫）", type: "textarea" },
         ],
       },
     ],

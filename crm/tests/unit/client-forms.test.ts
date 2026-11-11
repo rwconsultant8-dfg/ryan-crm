@@ -29,9 +29,13 @@ afterEach(() => vi.unstubAllGlobals());
 describe("客戶工作流程", () => {
   it("shows automatic Fact Finding, selectable Needs and Presentation consensus and drill", () => {
     const meeting = render("MEETING"), followup = render("FOLLOWUP"), proposal = render("PROPOSAL");
-    expect(meeting.match(/<textarea/g)).toHaveLength(15);
+    expect(meeting.match(/<textarea/g)).toHaveLength(9);
     expect(meeting).toContain("資料 checklist");
     expect(meeting).toContain("見面準備");
+    expect(meeting).toContain('id="client-form_nr1-notes"');
+    for (const field of ["helped", "point_a", "point_b", "situation", "common_issues", "point_c", "summary"]) {
+      expect(meeting).not.toContain(`id="client-form_${["helped", "point_a", "point_b"].includes(field) ? "rr" : "nr1"}-${field}"`);
+    }
     expect(meeting).not.toContain("了解客戶");
     expect(followup.match(/<textarea/g)).toHaveLength(1);
     expect(followup).toContain("跟進記錄（自由填寫）");
@@ -95,6 +99,13 @@ describe("客戶工作流程", () => {
     expect(html).toContain("最新跟進</textarea>");
     expect(html).toMatch(/<textarea[^>]*disabled=""/);
     expect(html.match(/<textarea/g)).toHaveLength(1);
+    values.form_rr = { helped: "舊協助記錄", point_a: "舊現況", point_b: "舊目標" };
+    values.form_nr1 = { situation: "舊見面準備", notes: "下次帶同客戶要求嘅資料" };
+    const meeting = render("MEETING", values, true);
+    expect(meeting).toContain("過往記錄（4）");
+    for (const value of ["舊協助記錄", "舊現況", "舊目標", "舊見面準備"]) expect(meeting).toContain(value);
+    expect(meeting).toContain("下次帶同客戶要求嘅資料</textarea>");
+    expect(factFindingChecklist({}, values).some((item) => ["form_rr.helped", "form_rr.point_a", "form_rr.point_b"].includes(item.key))).toBe(false);
   });
 });
 
@@ -118,6 +129,9 @@ describe("簡化表單儲存", () => {
     expect(row.nr2_budget_set).toBe(true);
     expect(await saveFormAction("client", "NR2", { notes: "" }, {})).toEqual({ ok: true });
     expect(decryptColumn("client", "form_nr2", row.form_nr2)).toEqual({ values: "原有價值觀", budget_text: "3000" });
+    row.form_nr1 = encryptColumn("client", "form_nr1", {}, { situation: "舊準備內容", point_c: "原有概念" });
+    expect(await saveFormAction("client", "NR1", { notes: "帶同客戶要求嘅資料" }, {})).toEqual({ ok: true });
+    expect(decryptColumn("client", "form_nr1", row.form_nr1)).toEqual({ situation: "舊準備內容", point_c: "原有概念", notes: "帶同客戶要求嘅資料" });
   });
   it("updates purpose, effect, content and free notes while preserving previous proposal detail", async () => {
     const fake = database();
