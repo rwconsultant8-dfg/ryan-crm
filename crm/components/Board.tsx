@@ -17,12 +17,12 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { moveSeasonAction, moveStageAction, unsignAction } from "@/app/(app)/clients/actions";
-import { GENDERS, STAGES, missingChecks, type Checks, type Stage } from "@/lib/stages";
+import { GENDERS, PIPELINE_STAGES, isClosedStage, isPipelineStage, missingChecks, type Checks, type PipelineStage } from "@/lib/stages";
 import { NO_SEASON, SIGNED_ZONE, type SeasonColumn } from "@/lib/seasons";
 
 export type BoardCard = {
   id: string;
-  stage: Stage;
+  stage: PipelineStage;
   season: SeasonColumn;
   ready: boolean;
   checks: Checks;
@@ -96,10 +96,10 @@ function Column({ col, cards, readOnly, compact }: { col: BoardColumn; cards: Bo
 
 export type BoardColumn = { key: string; label: string; hint?: string; done?: boolean };
 
-const STAGE_COLUMNS: BoardColumn[] = STAGES.map((s) => ({
+const STAGE_COLUMNS: BoardColumn[] = PIPELINE_STAGES.map((s) => ({
   key: s.key,
-  label: s.short,
-  done: s.key === "SIGNED" || s.key === "ISSUED",
+  label: s.label,
+  done: isClosedStage(s.key),
 }));
 
 /** 看板：groupBy="stage" 按階段（預設），groupBy="season" 按四季 */
@@ -125,9 +125,8 @@ export default function Board({
   const [notice, setNotice] = useState<{ text: string; href?: string; link?: string } | null>(null);
   const [, startTransition] = useTransition();
 
-  const isSigned = (c: BoardCard) => c.stage === "SIGNED" || c.stage === "ISSUED";
-  // 四季頁：已簽／已出單嘅客放喺「已簽」欄，其他按季節
-  const colOf = (c: BoardCard): string => (groupBy === "stage" ? c.stage : isSigned(c) ? SIGNED_ZONE : c.season);
+  // 四季頁：Closing 同 Referral 嘅客放喺 Closing 欄
+  const colOf = (c: BoardCard): string => (groupBy === "stage" ? c.stage : isClosedStage(c.stage) ? SIGNED_ZONE : c.season);
 
   // 滑鼠拖 6px 先算拖；手機長按 250ms 先開始拖，避免同捲動打交
   const sensors = useSensors(
@@ -165,14 +164,15 @@ export default function Board({
     setNotice(null);
 
     if (groupBy === "stage") {
-      if ((to === "SIGNED" || to === "ISSUED") && !confirmNotReady(card, STAGES.find((s) => s.key === to)?.short ?? to)) return;
-      setCards((cs) => cs.map((c) => (c.id === id ? { ...c, stage: to as Stage } : c)));
+      if (!isPipelineStage(to)) return;
+      if (isClosedStage(to) && !confirmNotReady(card, PIPELINE_STAGES.find((s) => s.key === to)?.label ?? to)) return;
+      setCards((cs) => cs.map((c) => (c.id === id ? { ...c, stage: to } : c)));
       return run(prev, () => moveStageAction(id, to));
     }
 
     // 四季頁：拖去「已簽」= 簽咗單
     if (to === SIGNED_ZONE) {
-      if (!confirmNotReady(card, "已簽")) return;
+      if (!confirmNotReady(card, "Closing")) return;
       setCards((cs) => cs.map((c) => (c.id === id ? { ...c, stage: "SIGNED" } : c)));
       return run(
         prev,
@@ -182,8 +182,8 @@ export default function Board({
     }
 
     // 由「已簽」拖返出去 = 撤回已簽（階段改返 PC）
-    if (isSigned(card)) {
-      if (!window.confirm(`撤回「${card.name}」嘅已簽狀態？階段會改返做 PC。`)) return;
+    if (isClosedStage(card.stage)) {
+      if (!window.confirm(`撤回「${card.name}」嘅已簽狀態？階段會改返做 Presentation。`)) return;
       setCards((cs) => cs.map((c) => (c.id === id ? { ...c, stage: "PC", season: to as SeasonColumn } : c)));
       return run(prev, () => unsignAction(id, to === NO_SEASON ? null : to));
     }

@@ -1,3 +1,4 @@
+import { isClosedStage } from "@/lib/stages";
 import Link from "next/link";
 import Board from "@/components/Board";
 import { requireUser } from "@/lib/auth";
@@ -6,7 +7,7 @@ import { listClientCards, toBoardCards } from "@/lib/data";
 export default async function BoardPage() {
   const { supabase, profile } = await requireUser();
   const cards = await listClientCards(supabase, profile.id);
-  const ready = cards.filter((c) => c.ready_to_sign && c.stage !== "SIGNED" && c.stage !== "ISSUED").length;
+  const ready = cards.filter((c) => c.ready_to_sign && !isClosedStage(c.stage)).length;
   return (
     <>
       <div className="row" style={{ marginBottom: 12 }}>

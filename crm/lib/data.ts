@@ -2,14 +2,14 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { decryptColumn } from "./secure";
 import { NO_SEASON, type SeasonColumn } from "./seasons";
-import { CHECK_KEYS, FORMS, type Checks, type FormColumn, type Stage } from "./stages";
+import { CHECK_KEYS, CLIENT_FORMS, REFERRAL_STAGE_KEY, toPipelineStage, type Checks, type ClientFormColumn, type PipelineStage, type Stage } from "./stages";
 
 export type ClientInfo = { name: string; age: string; gender: string; occupation: string; marital: string };
 
 export type ClientCard = {
   id: string;
   owner_id: string;
-  stage: Stage;
+  stage: PipelineStage;
   season: SeasonColumn;
   ready_to_sign: boolean;
   checks: Checks;
@@ -18,11 +18,12 @@ export type ClientCard = {
 };
 
 export type ClientFull = ClientCard & {
-  forms: Record<FormColumn, Record<string, string>>;
+  forms: Record<ClientFormColumn, Record<string, string>>;
   created_at: string;
 };
 
-const CARD_COLS = ["id", "owner_id", "stage", "season", "ready_to_sign", "info", "updated_at", ...CHECK_KEYS].join(", ");
+const REFERRAL_STAGE_COL = `${REFERRAL_STAGE_KEY}:form_pc->>${REFERRAL_STAGE_KEY}`;
+const CARD_COLS = [REFERRAL_STAGE_COL, "id", "owner_id", "stage", "season", "ready_to_sign", "info", "updated_at", ...CHECK_KEYS].join(", ");
 
 type Row = Record<string, unknown> & { id: string };
 
@@ -39,10 +40,14 @@ function toInfo(id: string, enc: unknown): ClientInfo {
 
 function toCard(r: Row): ClientCard {
   const checks = Object.fromEntries(CHECK_KEYS.map((k) => [k, Boolean(r[k])])) as Checks;
+  const storedStage = r.stage as Stage;
+  const marker = r[REFERRAL_STAGE_KEY];
+  const referral = storedStage === "SIGNED" && typeof marker === "string"
+    && decryptColumn(r.id, "form_pc", { [REFERRAL_STAGE_KEY]: marker })[REFERRAL_STAGE_KEY] === "true";
   return {
     id: r.id,
     owner_id: r.owner_id as string,
-    stage: r.stage as Stage,
+    stage: toPipelineStage(storedStage, referral),
     season: ((r.season as string | null) ?? NO_SEASON) as SeasonColumn,
     ready_to_sign: Boolean(r.ready_to_sign),
     checks,
@@ -61,12 +66,12 @@ export async function listClientCards(supabase: SupabaseClient, ownerId?: string
 }
 
 export async function getClientFull(supabase: SupabaseClient, id: string): Promise<ClientFull | null> {
-  const { data, error } = await supabase.from("clients").select("*").eq("id", id).maybeSingle();
+  const { data, error } = await supabase.from("clients").select(`*, ${REFERRAL_STAGE_COL}`).eq("id", id).maybeSingle();
   if (error || !data) return null;
   const r = data as Row;
   const forms = Object.fromEntries(
-    FORMS.map((f) => [f.column, decryptColumn(r.id, f.column, r[f.column] as Record<string, string>)]),
-  ) as Record<FormColumn, Record<string, string>>;
+    CLIENT_FORMS.map((f) => [f.column, decryptColumn(r.id, f.column, r[f.column] as Record<string, string>)]),
+  ) as Record<ClientFormColumn, Record<string, string>>;
   return { ...toCard(r), forms, created_at: r.created_at as string };
 }
 

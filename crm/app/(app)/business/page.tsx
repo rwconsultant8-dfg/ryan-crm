@@ -1,3 +1,4 @@
+import { isClosedStage } from "@/lib/stages";
 import Link from "next/link";
 import BusinessMonth from "@/components/BusinessMonth";
 import { requireUser, displayName } from "@/lib/auth";
@@ -25,9 +26,9 @@ export default async function BusinessPage({
   ]);
   const clients = cards.map((c) => ({ id: c.id, name: c.info.name })).filter((c) => c.name);
   const recorded = new Set((linked ?? []).map((r) => r.client_id as string));
-  // 已簽／已出單但從未入過生意表嘅客
+  // Closing 或 Referral 客戶仲未入過生意表
   const signedToAdd = cards
-    .filter((c) => (c.stage === "SIGNED" || c.stage === "ISSUED") && !recorded.has(c.id))
+    .filter((c) => isClosedStage(c.stage) && !recorded.has(c.id))
     .map((c) => ({ id: c.id, name: c.info.name }));
 
   const q = (m: string) => `/business?month=${m}${readOnly ? `&agent=${owner.id}` : ""}`;

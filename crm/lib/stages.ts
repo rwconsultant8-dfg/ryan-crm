@@ -1,6 +1,7 @@
 // 準客戶卡嘅階段、表格欄位、簽單條件定義（取代《Prospect Check List》）
 
 export type Stage = "RR" | "NR1" | "NR2" | "FNA" | "PC" | "SIGNED" | "ISSUED";
+export type PipelineStage = "RR" | "NR2" | "PC" | "SIGNED" | "REFERRAL";
 export type FormStage = "RR" | "NR1" | "NR2" | "FNA" | "PC";
 export type FormColumn = "form_rr" | "form_nr1" | "form_nr2" | "form_fna" | "form_pc";
 
@@ -16,7 +17,28 @@ export const STAGES: { key: Stage; label: string; short: string }[] = [
 
 export const STAGE_KEYS = STAGES.map((s) => s.key);
 export const stageLabel = (s: Stage) => STAGES.find((x) => x.key === s)?.short ?? s;
-export const isStage = (v: unknown): v is Stage => typeof v === "string" && (STAGE_KEYS as string[]).includes(v);
+export const PIPELINE_STAGES = [
+  { key: "RR", label: "Fact Finding" },
+  { key: "NR2", label: "Needs" },
+  { key: "PC", label: "Presentation" },
+  { key: "SIGNED", label: "Closing" },
+  { key: "REFERRAL", label: "Referral" },
+] as const satisfies ReadonlyArray<{ key: PipelineStage; label: string }>;
+
+export const isPipelineStage = (value: string): value is PipelineStage =>
+  PIPELINE_STAGES.some(({ key }) => key === value);
+
+export const isClosedStage = (stage: PipelineStage) => stage === "SIGNED" || stage === "REFERRAL";
+
+// Referral uses the signed storage stage and an encrypted flag in form_pc.
+export const REFERRAL_STAGE_KEY = "referral_stage";
+
+export function toPipelineStage(stage: Stage, referral: boolean): PipelineStage {
+  if (stage === "NR1" || stage === "FNA") return "NR2";
+  if (stage === "ISSUED") return "SIGNED";
+  if (stage === "SIGNED" && referral) return "REFERRAL";
+  return stage;
+}
 
 export type Field = {
   key: string;
@@ -27,7 +49,7 @@ export type Field = {
 
 export const FOLLOW_UPS = [
   { key: "closing", label: "Closing" },
-  { key: "referral_service", label: "Referral Service" },
+  { key: "referral_service", label: "Referral" },
 ] as const;
 export type FollowUp = (typeof FOLLOW_UPS)[number]["key"];
 
@@ -131,7 +153,7 @@ export const FORMS: FormDef[] = [
     tips: [
       "透過發問、回應、總結，確立需要的價值／建立強烈的購買原因",
       "確立並一致需要 · Fact & Feeling 理財焦點 · 善用發問的力量",
-      "RR 人生價值觀（AB 點）＋ NR1 認同理財概念（C 點）＝ NR2 獨一無二的購買原因",
+      "Fact Finding 了解人生價值觀（AB 點），Needs 確認客人嘅理財目標同購買原因",
     ],
     sections: [
       {
@@ -202,7 +224,7 @@ export const FORMS: FormDef[] = [
       },
       {
         title: "1. 重申上次會面已一致的配置總結方程式",
-        note: "＊澄清有沒有新的想法，如有需由 NR2 再做",
+        note: "＊澄清有沒有新的想法，如有需重新確認 Needs",
         fields: [
           { key: "r_purpose", label: "目的", type: "textarea" },
           { key: "r_effect", label: "效果", type: "textarea" },
@@ -253,6 +275,12 @@ export const FORMS: FormDef[] = [
   },
 ];
 
+export type ClientFormColumn = Exclude<FormColumn, "form_nr1" | "form_fna">;
+export type ClientFormDef = FormDef & { column: ClientFormColumn };
+export const CLIENT_FORMS = FORMS.filter(
+  (form): form is ClientFormDef => form.column !== "form_nr1" && form.column !== "form_fna",
+);
+
 export const formFor = (stage: FormStage) => FORMS.find((f) => f.stage === stage)!;
 
 export function formFieldKeys(def: FormDef): string[] {
@@ -272,24 +300,6 @@ export function missingChecks(checks: Partial<Checks>): { stage: "RR" | "NR2"; l
 }
 
 export const isReady = (checks: Partial<Checks>) => missingChecks(checks).length === 0;
-
-const num = (v: string | undefined) => {
-  if (v === undefined || v.trim() === "") return null;
-  const n = Number(v.replace(/[,\s]/g, ""));
-  return Number.isFinite(n) ? n : null;
-};
-
-/** FNA 自動計算：現金流＝收入－支出；淨資產＝資產－負債 */
-export function fnaSummary(form: Record<string, string>) {
-  const income = num(form.income);
-  const expense = num(form.expense);
-  const assets = num(form.assets);
-  const liabilities = num(form.liabilities);
-  return {
-    cashflow: income !== null && expense !== null ? income - expense : null,
-    netWorth: assets !== null && liabilities !== null ? assets - liabilities : null,
-  };
-}
 
 export const GENDERS = [
   { value: "M", label: "男" },

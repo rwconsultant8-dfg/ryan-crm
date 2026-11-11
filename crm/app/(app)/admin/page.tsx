@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireAdmin, displayName, type Profile } from "@/lib/auth";
 import { listClientCards } from "@/lib/data";
-import { STAGES } from "@/lib/stages";
+import { PIPELINE_STAGES, isClosedStage } from "@/lib/stages";
 import { KpiBadge } from "@/components/ActivityWeek";
 import { totalPoints } from "@/lib/activity";
 import { loadWeeklyCounts } from "@/lib/activity-data";
@@ -25,8 +25,7 @@ export default async function AdminOverview() {
   };
   const staff = ((people as Profile[] | null) ?? []).filter((p) => p.active || cards.some((c) => c.owner_id === p.id));
 
-  const openStage = (s: string) => s !== "SIGNED" && s !== "ISSUED";
-  const readyCards = cards.filter((c) => c.ready_to_sign && openStage(c.stage));
+  const readyCards = cards.filter((c) => c.ready_to_sign && !isClosedStage(c.stage));
   const names = new Map(staff.map((p) => [p.id, displayName(p)]));
 
   const rows = staff.map((p) => {
@@ -34,8 +33,8 @@ export default async function AdminOverview() {
     return {
       p,
       total: mine.length,
-      byStage: Object.fromEntries(STAGES.map((s) => [s.key, mine.filter((c) => c.stage === s.key).length])),
-      ready: mine.filter((c) => c.ready_to_sign && openStage(c.stage)).length,
+      byStage: Object.fromEntries(PIPELINE_STAGES.map((s) => [s.key, mine.filter((c) => c.stage === s.key).length])),
+      ready: mine.filter((c) => c.ready_to_sign && !isClosedStage(c.stage)).length,
     };
   });
 
@@ -56,8 +55,8 @@ export default async function AdminOverview() {
           <b>{cards.filter((c) => c.stage === "SIGNED").length}</b>
         </div>
         <div className="card">
-          已出單
-          <b>{cards.filter((c) => c.stage === "ISSUED").length}</b>
+          Referral
+          <b>{cards.filter((c) => c.stage === "REFERRAL").length}</b>
         </div>
       </div>
 
@@ -67,9 +66,9 @@ export default async function AdminOverview() {
           <thead>
             <tr>
               <th>員工</th>
-              {STAGES.map((s) => (
+              {PIPELINE_STAGES.map((s) => (
                 <th key={s.key} className="num">
-                  {s.short}
+                  {s.label}
                 </th>
               ))}
               <th className="num">具備簽單條件</th>
@@ -85,7 +84,7 @@ export default async function AdminOverview() {
                   {p.role === "admin" && <span className="muted small">（主管）</span>}
                   {!p.active && <span className="badge badge-red" style={{ marginLeft: 6 }}>已停用</span>}
                 </td>
-                {STAGES.map((s) => (
+                {PIPELINE_STAGES.map((s) => (
                   <td key={s.key} className="num">
                     {byStage[s.key] || <span className="muted">0</span>}
                   </td>
@@ -128,7 +127,7 @@ export default async function AdminOverview() {
           <tfoot>
             <tr>
               <td>合計</td>
-              {STAGES.map((s) => (
+              {PIPELINE_STAGES.map((s) => (
                 <td key={s.key} className="num">
                   {cards.filter((c) => c.stage === s.key).length}
                 </td>
@@ -161,7 +160,7 @@ export default async function AdminOverview() {
                     <Link href={`/clients/${c.id}`}>{c.info.name}</Link>
                   </td>
                   <td>{names.get(c.owner_id) ?? "—"}</td>
-                  <td>{STAGES.find((s) => s.key === c.stage)?.short}</td>
+                  <td>{PIPELINE_STAGES.find((s) => s.key === c.stage)?.label}</td>
                 </tr>
               ))}
             </tbody>

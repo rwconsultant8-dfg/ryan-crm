@@ -8,16 +8,18 @@ import { encryptColumn } from "@/lib/secure";
 import { isSeason } from "@/lib/seasons";
 import {
   FOLLOW_UPS,
-  FORMS,
+  CLIENT_FORMS,
+  REFERRAL_STAGE_KEY,
   GENDERS,
   INFO_KEYS,
   MARITAL,
   formFieldKeys,
-  isStage,
+  isPipelineStage,
   proposalUrl,
   type CheckKey,
   type FormStage,
   type FollowUp,
+  type PipelineStage,
 } from "@/lib/stages";
 
 export type ActionResult = { ok: true } | { ok: false, error: string };
@@ -93,7 +95,7 @@ export async function saveFormAction(
   checks: Partial<Record<CheckKey, boolean>>,
   followUp?: FollowUp,
 ): Promise<ActionResult> {
-  const def = FORMS.find((f) => f.stage === stage);
+  const def = CLIENT_FORMS.find((f) => f.stage === stage);
   if (!def || (followUp !== undefined && (stage !== "PC" || !FOLLOW_UPS.some((item) => item.key === followUp)))) {
     return { ok: false, error: "表格無效" };
   }
@@ -125,9 +127,25 @@ export async function saveFormAction(
   return updateOwn(id, patch, { column: def.column, value: existing });
 }
 
+async function updateStage(id: string, stage: PipelineStage, season?: string | null): Promise<ActionResult> {
+  const existing = await loadEnc(id, "form_pc");
+  if (!existing) return { ok: false, error: NO_ACCESS };
+
+  const patch: Record<string, unknown> = { stage: stage === "REFERRAL" ? "SIGNED" : stage };
+  if (season !== undefined) patch.season = season;
+  if (stage === "REFERRAL" || REFERRAL_STAGE_KEY in existing) {
+    patch.form_pc = encryptColumn(id, "form_pc", existing, {
+      [REFERRAL_STAGE_KEY]: stage === "REFERRAL" ? "true" : "",
+    });
+  }
+  const res = await updateOwn(id, patch, { column: "form_pc", value: existing });
+  if (res.ok) revalidatePath("/seasons");
+  return res;
+}
+
 export async function moveStageAction(id: string, stage: string): Promise<ActionResult> {
-  if (!isStage(stage)) return { ok: false, error: "階段無效" };
-  return updateOwn(id, { stage });
+  if (!isPipelineStage(stage)) return { ok: false, error: "階段無效" };
+  return updateStage(id, stage);
 }
 
 export async function moveSeasonAction(id: string, season: string | null): Promise<ActionResult> {
@@ -140,9 +158,7 @@ export async function moveSeasonAction(id: string, season: string | null): Promi
 /** 由「已簽」撤回：一次過將階段改返 PC 同設定季節 */
 export async function unsignAction(id: string, season: string | null): Promise<ActionResult> {
   if (season !== null && !isSeason(season)) return { ok: false, error: "季節無效" };
-  const res = await updateOwn(id, { stage: "PC", season });
-  revalidatePath("/seasons");
-  return res;
+  return updateStage(id, "PC", season);
 }
 
 export async function deleteClientAction(id: string): Promise<ActionResult> {

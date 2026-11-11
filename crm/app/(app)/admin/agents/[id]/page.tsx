@@ -1,3 +1,4 @@
+import { isClosedStage } from "@/lib/stages";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Board from "@/components/Board";
@@ -10,7 +11,7 @@ export default async function AgentBoard({ params }: { params: Promise<{ id: str
   const { data: agent } = await supabase.from("profiles").select("id, email, full_name, role, active").eq("id", id).maybeSingle<Profile>();
   if (!agent) notFound();
   const cards = await listClientCards(supabase, id);
-  const ready = cards.filter((c) => c.ready_to_sign && c.stage !== "SIGNED" && c.stage !== "ISSUED").length;
+  const ready = cards.filter((c) => c.ready_to_sign && !isClosedStage(c.stage)).length;
   return (
     <>
       <p className="small">

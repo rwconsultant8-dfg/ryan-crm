@@ -7,42 +7,39 @@ import InfoFields from "./InfoFields";
 import { NO_SEASON, SEASONS, type SeasonColumn } from "@/lib/seasons";
 import {
   FOLLOW_UPS,
-  FORMS,
+  CLIENT_FORMS,
   INFO_KEYS,
   INFO_LABELS,
   GENDERS,
   MARITAL,
   MEETING_TIPS,
   formFieldKeys,
-  STAGES,
-  fnaSummary,
+  PIPELINE_STAGES,
+  isClosedStage,
   missingChecks,
   proposalUrl,
   stageLabel,
   type CheckKey,
   type Checks,
   type Field,
-  type FormColumn,
-  type FormDef,
+  type ClientFormColumn,
+  type ClientFormDef,
   type FollowUp,
-  type Stage,
+  type PipelineStage,
 } from "@/lib/stages";
 
 type Info = { name: string; age: string; gender: string; occupation: string; marital: string };
 
 export type EditorClient = {
   id: string;
-  stage: Stage;
+  stage: PipelineStage;
   season: SeasonColumn;
   info: Info;
   checks: Checks;
-  forms: Record<FormColumn, Record<string, string>>;
+  forms: Record<ClientFormColumn, Record<string, string>>;
 };
 
-type Tab = "info" | FormColumn | FollowUp;
-
-const money = (n: number | null) =>
-  n === null ? "—" : `HK$ ${n.toLocaleString("en-HK", { maximumFractionDigits: 2 })}`;
+type Tab = "info" | ClientFormColumn | FollowUp;
 
 function FieldInput({
   f,
@@ -96,7 +93,7 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
   const [info, setInfo] = useState<Info>(client.info);
   const [forms, setForms] = useState(client.forms);
   const [checks, setChecks] = useState<Checks>(client.checks);
-  const [stage, setStage] = useState<Stage>(client.stage);
+  const [stage, setStage] = useState<PipelineStage>(client.stage);
   const [season, setSeason] = useState<SeasonColumn>(client.season);
   const [dirty, setDirty] = useState<Set<Tab>>(new Set());
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -142,15 +139,15 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
       return;
     }
     const followUp = FOLLOW_UPS.find((item) => item.key === tab)?.key;
-    const def = FORMS.find((f) => f.column === (followUp ? "form_pc" : tab))!;
+    const def = CLIENT_FORMS.find((f) => f.column === (followUp ? "form_pc" : tab))!;
     const cs: Partial<Record<CheckKey, boolean>> = {};
     for (const c of def.checks?.items ?? []) cs[c.key] = checks[c.key];
     run(() => saveFormAction(client.id, def.stage, forms[def.column], cs, followUp), () => clearDirty(tab));
   };
 
-  const changeStage = (to: Stage) => {
-    if ((to === "SIGNED" || to === "ISSUED") && !ready) {
-      if (!window.confirm(`仲差 ${missing.length} 格先具備簽單條件，確定移去「${STAGES.find((s) => s.key === to)?.short}」？`)) return;
+  const changeStage = (to: PipelineStage) => {
+    if (isClosedStage(to) && !ready) {
+      if (!window.confirm(`仲差 ${missing.length} 格先具備簽單條件，確定移去「${PIPELINE_STAGES.find((s) => s.key === to)?.label}」？`)) return;
     }
     const prev = stage;
     setStage(to);
@@ -188,14 +185,13 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
     run(() => deleteClientAction(client.id));
   };
 
-  const setField = (col: FormColumn, key: string, v: string, activeTab: Tab = col) => {
+  const setField = (col: ClientFormColumn, key: string, v: string, activeTab: Tab = col) => {
     setForms((f) => ({ ...f, [col]: { ...f[col], [key]: v } }));
     markDirty(activeTab);
   };
 
-  const renderForm = (def: FormDef, followUp?: FollowUp) => {
+  const renderForm = (def: ClientFormDef, followUp?: FollowUp) => {
     const values = forms[def.column] ?? {};
-    const fna = def.stage === "FNA" ? fnaSummary(values) : null;
     const linkedProposal = proposalUrl(client.forms.form_pc.proposal_url ?? "");
     return (
       <div>
@@ -258,18 +254,6 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
             </div>
           </section>
         ))}
-        {fna && (
-          <div className="calc">
-            <div className="stat">
-              每月現金流（收入－支出）
-              <b className={fna.cashflow !== null && fna.cashflow < 0 ? "neg" : "pos"}>{money(fna.cashflow)}</b>
-            </div>
-            <div className="stat">
-              淨資產（資產－負債）
-              <b className={fna.netWorth !== null && fna.netWorth < 0 ? "neg" : "pos"}>{money(fna.netWorth)}</b>
-            </div>
-          </div>
-        )}
         {def.checks && (
           <div className="checklist">
             <h3 style={{ marginTop: 0 }}>{def.checks.title}</h3>
@@ -306,14 +290,14 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
     );
   };
 
-  const filled = (col: FormColumn) => {
-    const def = FORMS.find((f) => f.column === col)!;
+  const filled = (col: ClientFormColumn) => {
+    const def = CLIENT_FORMS.find((f) => f.column === col)!;
     const keys = formFieldKeys({ ...def, sections: def.sections.filter((section) => !section.followUp) });
     return { n: keys.filter((k) => (forms[col]?.[k] ?? "").trim() !== "").length, total: keys.length };
   };
   const tabs: { key: Tab; label: string; count?: string }[] = [
     { key: "info", label: "基本資料" },
-    ...FORMS.map((f) => {
+    ...CLIENT_FORMS.map((f) => {
       const c = filled(f.column);
       return { key: f.column as Tab, label: stageLabel(f.stage), count: `${c.n}/${c.total}` };
     }),
@@ -335,10 +319,10 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
         <div className="client-controls">
           <label className="ctl">
             <span>階段</span>
-            <select value={stage} disabled={readOnly || pending} onChange={(e) => changeStage(e.target.value as Stage)} aria-label="階段">
-              {STAGES.map((s) => (
+            <select value={stage} disabled={readOnly || pending} onChange={(e) => changeStage(e.target.value as PipelineStage)} aria-label="階段">
+              {PIPELINE_STAGES.map((s) => (
                 <option key={s.key} value={s.key}>
-                  {s.short}
+                  {s.label}
                 </option>
               ))}
             </select>
@@ -411,7 +395,7 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
             }}
           />
         ) : (
-          renderForm(FORMS.find((f) => f.column === (activeFollowUp ? "form_pc" : tab))!, activeFollowUp)
+          renderForm(CLIENT_FORMS.find((f) => f.column === (activeFollowUp ? "form_pc" : tab))!, activeFollowUp)
         )}
 
         {!readOnly && (

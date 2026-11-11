@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { describeChanges, fieldLabel } from "@/lib/audit";
-import { CHECK_KEYS, FORMS, fnaSummary, formFieldKeys, isReady, missingChecks, type Checks } from "@/lib/stages";
+import { CHECK_KEYS, CLIENT_FORMS, FORMS, PIPELINE_STAGES, formFieldKeys, isReady, missingChecks, toPipelineStage, type Checks } from "@/lib/stages";
 
 const all = (v: boolean) => Object.fromEntries(CHECK_KEYS.map((k) => [k, v])) as Checks;
 
@@ -20,15 +20,21 @@ describe("簽單條件", () => {
   });
 });
 
-describe("FNA", () => {
-  it("現金流＝收入－支出，淨資產＝資產－負債", () => {
-    expect(fnaSummary({ income: "50,000", expense: "32000", assets: "1000000", liabilities: "1200000" })).toEqual({
-      cashflow: 18000,
-      netWorth: -200000,
-    });
+describe("客戶流程", () => {
+  it("顯示指定嘅五個階段同三個階段表格", () => {
+    expect(PIPELINE_STAGES.map((stage) => stage.label)).toEqual([
+      "Fact Finding", "Needs", "Presentation", "Closing", "Referral",
+    ]);
+    expect(CLIENT_FORMS.map((form) => form.stage)).toEqual(["RR", "NR2", "PC"]);
   });
-  it("未填就唔計", () => {
-    expect(fnaSummary({ income: "50000" })).toEqual({ cashflow: null, netWorth: null });
+
+  it("保留舊客戶喺流程入面，只有標明 Referral 嘅已簽客先顯示喺 Referral", () => {
+    expect(toPipelineStage("NR1", false)).toBe("NR2");
+    expect(toPipelineStage("FNA", false)).toBe("NR2");
+    expect(toPipelineStage("ISSUED", false)).toBe("SIGNED");
+    expect(toPipelineStage("SIGNED", false)).toBe("SIGNED");
+    expect(toPipelineStage("SIGNED", true)).toBe("REFERRAL");
+    expect(toPipelineStage("PC", true)).toBe("PC");
   });
 });
 

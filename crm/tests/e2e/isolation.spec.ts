@@ -51,6 +51,9 @@ test.describe.serial("權限隔離", () => {
     client1Id = client1Url.split("/").pop()!;
 
     await expect(page.getByTestId("ready-box")).toContainText("仲差 8 格");
+    await expect(page.getByLabel("階段").locator("option")).toHaveText([
+      "Fact Finding", "Needs", "Presentation", "Closing", "Referral",
+    ]);
 
     await page.getByRole("tab", { name: "Fact Finding" }).click();
     const checklist = page.getByRole("group", { name: "基本資料 Checklist" });
@@ -75,13 +78,6 @@ test.describe.serial("權限隔離", () => {
     await expect(page.getByText("已儲存")).toBeVisible();
     await expect(page.getByTestId("ready-box")).toContainText("具備簽單條件");
 
-    await page.getByRole("tab", { name: "FNA" }).click();
-    await page.getByLabel("收入（每月 HK$）").fill("50000");
-    await page.getByLabel("支出（每月 HK$）").fill("32000");
-    await expect(page.getByText("HK$ 18,000")).toBeVisible();
-    await page.getByRole("button", { name: "儲存" }).click();
-    await expect(page.getByText("已儲存")).toBeVisible();
-
     await page.getByRole("tab", { name: "Presentation" }).click();
     await page.getByLabel("計劃書連結（HTTPS）").fill("https://example.com/proposal");
     await page.getByLabel("與客戶達成的共識").fill("同意先處理醫療保障");
@@ -93,7 +89,7 @@ test.describe.serial("權限隔離", () => {
     await page.getByRole("button", { name: "儲存" }).click();
     await expect(page.getByText("已儲存")).toBeVisible();
 
-    await page.getByRole("tab", { name: "Referral Service" }).click();
+    await page.getByRole("tab", { name: "Referral", exact: true }).click();
     await page.getByLabel("留意事項").fill("約定服務回訪");
     await page.getByRole("button", { name: "儲存" }).click();
     await expect(page.getByText("已儲存")).toBeVisible();
@@ -103,8 +99,17 @@ test.describe.serial("權限隔離", () => {
     await expect(page.getByLabel("醫療保險", { exact: true })).toBeChecked();
     await page.getByRole("tab", { name: "Closing", exact: true }).click();
     await expect(page.getByRole("listitem").filter({ hasText: "確認文件" })).toBeVisible();
-    await page.getByRole("tab", { name: "Referral Service" }).click();
+    await page.getByRole("tab", { name: "Referral", exact: true }).click();
     await expect(page.getByRole("listitem").filter({ hasText: "約定服務回訪" })).toBeVisible();
+
+    await page.getByLabel("階段").selectOption("REFERRAL");
+    await expect(page.getByText("已轉階段")).toBeVisible();
+    await page.goto("/board");
+    await expect(page.locator('[data-stage="REFERRAL"]')).toContainText(CLIENT_1);
+    await page.goto(client1Url);
+    await expect(page.getByLabel("階段")).toHaveValue("REFERRAL");
+    await page.getByLabel("階段").selectOption("RR");
+    await expect(page.getByText("已轉階段")).toBeVisible();
 
     await page.goto("/clients/new");
     await page.getByLabel("姓名 *").fill(CLIENT_2);
@@ -121,7 +126,7 @@ test.describe.serial("權限隔離", () => {
     await login(page, A);
     await page.goto("/board");
     const card = page.getByTestId("client-card").filter({ hasText: CLIENT_2 });
-    const target = page.locator('[data-stage="NR1"]');
+    const target = page.locator('[data-stage="NR2"]');
     const from = (await card.boundingBox())!;
     const to = (await target.boundingBox())!;
     await page.mouse.move(from.x + 20, from.y + 15);
@@ -133,7 +138,7 @@ test.describe.serial("權限隔離", () => {
     await expect(target).toContainText(CLIENT_2);
     await saved;
     await page.reload();
-    await expect(page.locator('[data-stage="NR1"]')).toContainText(CLIENT_2);
+    await expect(page.locator('[data-stage="NR2"]')).toContainText(CLIENT_2);
   });
 
   test("員工 A 喺四季頁拖拉客人", async ({ page }) => {

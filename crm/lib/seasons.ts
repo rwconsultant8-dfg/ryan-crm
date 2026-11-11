@@ -21,7 +21,7 @@ export const SEASONS: SeasonDef[] = [
     state: "有力無心",
     focus: "建立 ICIC 信任",
     actions: [
-      "RR → NR1 開口",
+      "Fact Finding → Needs",
       "賣人情（先付出後回報）",
       "了解你的人品／Marketing 加 FB／IG",
       "印象分",

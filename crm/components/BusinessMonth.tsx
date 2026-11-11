@@ -230,7 +230,7 @@ export default function BusinessMonth({
 
       {!readOnly && notInTable.length > 0 && (
         <div className="notice biz-suggest">
-          已簽／已出單但未入生意表：
+          Closing／Referral 未入生意表：
           {notInTable.map((c) => (
             <button key={c.id} className="btn btn-sm" onClick={() => add(c)}>
               ＋ {c.name}
