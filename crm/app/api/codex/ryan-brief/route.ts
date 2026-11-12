@@ -18,10 +18,11 @@ export async function POST(request: NextRequest) {
   try {
     const db = createAdminClient();
     const recipientCheck = mode === "preview" ? verifyMomoPreviewRecipient(db) : verifyBriefRecipient(db);
-    const [recipient, token] = await Promise.all([recipientCheck, resolveCoachToken()]);
+    const [account, token] = await Promise.all([recipientCheck, resolveCoachToken()]);
+    const recipient = typeof account === "string" ? account : account.id;
     if (!token) return response("bot_not_configured", 503);
     phase = "read";
-    const text = await loadMorningBrief(db, day, now, mode === "test" || mode === "preview");
+    const text = await loadMorningBrief(db, day, now, mode === "test" || mode === "preview", typeof account === "string" ? undefined : account.ownerId);
     if (mode === "check") return response("ready");
 
     phase = "claim";

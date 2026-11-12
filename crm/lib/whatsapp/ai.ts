@@ -1,6 +1,6 @@
 import "server-only";
 import { aiClient, aiModel, usesGateway } from "../ai-client";
-import { ALL_CHECKS, FORMS, STAGES } from "../stages";
+import { FORMS, STAGES } from "../stages";
 import { CLIENT_FORMS } from "../client-forms";
 import { SEASONS } from "../seasons";
 import { extractionJsonSchema, extractionSchema, type Extraction } from "./schema";
@@ -68,7 +68,7 @@ clarification：需要補充資料先可以處理時填具體問題，呢次唔�
 - 一段內容可以分拆到幾個欄位；只填同內容有關嘅欄位。
 - client.name：訊息講緊邊個客（例如「陳大文」「陳生」）。如果完全冇提到客，留空。age 放年齡；確實年齡填「55」，大概年齡保留「50幾」「約55」「50-59」，唔可以將「50幾歲」變成確實50歲。gender：M＝男、F＝女。marital：single 單身／dating 拍拖中／married 已婚／divorced 離婚／widowed 喪偶。
 - client.customer_type：只有員工明確講「新客戶／新客」先填new，「現有客戶／舊客／現有客」先填existing；冇講留空，唔按簽單階段、建立檔案日期或第一次提名推斷。普通提問時一律留空。
-- checks：只列出訊息清楚顯示已經達到嘅簽單條件。
+- checks 一律留空陣列。
 - stage：只有員工明確講咗客人去到邊個階段（Fact Finding → MEETING、Needs → FOLLOWUP、Presentation → PROPOSAL、Closing → SIGNED、Referral service → ISSUED）先填，否則留空。舊稱相約見面／深化跟進／落實方案／已簽單／已出單仍分別對應同一組代碼，唔改寫舊資料。
 - Needs：只按員工明確交代嘅產品需要勾選 form_nr2.need_*，text 用 "true"；明確取消某項需要先用 "false"。只提已持有某產品，或只提供年齡、家庭、財務背景，唔代表有新購買需要，唔自動勾選。
 - Presentation：客戶明確認同嘅重點放 form_pc.consensus；計劃書與客戶需要／目標嘅關聯放 form_pc.client_connection；員工交代嘅講解練習放 form_pc.drill。唔自行生成客戶共識或練習內容。
@@ -86,6 +86,7 @@ ${fieldGuide()}
 
 資料歸位規則（優先於表格名稱；同一段說話要按事實拆開，唔好整段塞入一欄）：
 - 基本資料：客戶姓名→client.name；客戶目前年齡→client.age；性別→client.gender；職業／職銜→client.occupation；客戶本人婚姻狀況→client.marital。年齡、性別、職業、婚姻狀況唔屬於性格。
+- client.birth_date 只填員工明確交代客戶本人完整出生年月日嘅原文，例如「1999年11月15號」。只講生日或年份留空，第三者嘅出生日期唔可以填。程式會計足歲，唔需要模型自行計算。
 - 「50幾歲」「五十幾歲」→client.age="50幾"；「約55歲」→"約55"；「50至59歲」→"50-59"；唔估確實數字或出生年份。子女／配偶嘅年齡只記家庭欄，唔可以當成客戶本人年齡。「想60歲退休」係目標，唔係目前60歲。
 - 家庭→form_rr.family：配偶、子女、父母、家庭關係、照顧責任、家庭事件。必須保留主語；「個仔啱啱結婚」只代表兒子結婚，唔代表客戶本人已婚。主語唔清楚喺summary請同事澄清，唔好估。
 - 工作→form_rr.work：行業、工作內容、公司、生意、工時、工作轉變；職業名稱亦放基本資料。收入數額歸財務。
@@ -103,9 +104,6 @@ ${fieldGuide()}
 分類例子（只示範欄位歸屬）：
 「新客陳女士，50幾歲，個仔啱啱結婚，做會計，月入港幣五萬，鍾意行山，希望60歲退休。」
 → client.name=陳女士；client.age=50幾；client.occupation=會計；client.marital留空；family=兒子剛結婚；work=會計；finance=每月收入HK$50,000；form_fna.income=50000；hobbies=行山；personality=希望60歲退休。唔加入「已婚」「性格保守」或推銷需要。
-
-簽單條件（checks）：
-${ALL_CHECKS.map((c) => `  - ${c.key}：${c.label}`).join("\n")}
 
 階段（stage）：${STAGES.map((s) => `${s.key}＝${s.short}`).join("、")}
 人脈分類（season）：${SEASONS.map((s) => `${s.key}＝${s.label}（${s.state}，${s.focus}）`).join("、")}

@@ -18,3 +18,24 @@ export function ageLabel(raw:string){
   if(/以上|以下|左右$/.test(value))return value.replace(/(以上|以下|左右)$/, "歲$1");
   return `${value}歲`;
 }
+
+/** Return completed years only when the full date identifies a unique plausible birth year. */
+export function ageFromBirthDate(raw: string, today: string): number | null {
+  const date = raw.normalize("NFKC").replace(/\s+/gu, "");
+  const parts = /^(\d{2}|\d{4})年(\d{1,2})月(\d{1,2})[日號]?$/.exec(date)
+    ?? /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/.exec(date);
+  if (!parts || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return null;
+  const [, yearText, monthText, dayText] = parts;
+  const [currentYear, currentMonth, currentDay] = today.split("-").map(Number);
+  const month = Number(monthText), day = Number(dayText);
+  const currentCentury = Math.floor(currentYear / 100) * 100;
+  const years = yearText.length === 4 ? [Number(yearText)] : [currentCentury + Number(yearText), currentCentury - 100 + Number(yearText)];
+  const ages = years.flatMap((year) => {
+    const birthDate = new Date(Date.UTC(year, month - 1, day));
+    if (birthDate.getUTCFullYear() !== year || birthDate.getUTCMonth() !== month - 1 || birthDate.getUTCDate() !== day) return [];
+    const beforeBirthday = currentMonth < month || (currentMonth === month && currentDay < day);
+    const age = currentYear - year - Number(beforeBirthday);
+    return age >= 0 && age <= 120 ? [age] : [];
+  });
+  return ages.length === 1 ? ages[0] : null;
+}

@@ -35,7 +35,7 @@ let client1Url = "";
 let client1Id = "";
 
 test.describe.serial("權限隔離", () => {
-  test("員工 A 開客、填 RR／NR2、自動標具備簽單條件", async ({ page }) => {
+  test("員工 A 開客並儲存 Fact Finding", async ({ page }) => {
     await login(page, A);
     await expect(page).toHaveURL(/\/board/);
 
@@ -50,26 +50,13 @@ test.describe.serial("權限隔離", () => {
     client1Url = new URL(page.url()).pathname;
     client1Id = client1Url.split("/").pop()!;
 
-    await expect(page.getByTestId("ready-box")).toContainText("仲差 8 格");
+    await expect(page.getByText("簽單條件", {exact:true})).toHaveCount(0);
 
     await expect(page.getByRole("tab", { name: "Fact Finding", exact: true })).toHaveAttribute("aria-selected", "true");
     await page.getByLabel("家庭").fill("已婚，一個仔讀小學");
     await page.getByLabel("職業", { exact: true }).fill("資深會計師");
-    for (const l of ["客人喜歡和信任你", "客人有穩定收入或淨資產", "客人與你有交情／共同經歷", "了解到客人的現況與目標"]) {
-      await page.getByLabel(l).check();
-    }
     await page.getByRole("button", { name: "儲存" }).click();
     await expect(page.getByText("已儲存")).toBeVisible();
-    await expect(page.getByTestId("ready-box")).toContainText("仲差 4 格");
-
-    await page.getByRole("tab", { name: "Needs", exact: true }).click();
-    for (const l of ["確認客人的需要", "預演計劃相關內容", "確立客人預算金額", "確定下次會面時間"]) {
-      await page.getByLabel(l, { exact: true }).check();
-    }
-    await page.getByRole("button", { name: "儲存" }).click();
-    await expect(page.getByText("已儲存")).toBeVisible();
-    await expect(page.getByTestId("ready-box")).toContainText("具備簽單條件");
-
     await page.reload();
     await expect(page.getByRole("tab", { name: "Fact Finding", exact: true })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByLabel("職業", { exact: true })).toHaveValue("資深會計師");
@@ -82,7 +69,7 @@ test.describe.serial("權限隔離", () => {
 
     await page.goto("/board");
     const card = page.getByTestId("client-card").filter({ hasText: CLIENT_1 });
-    await expect(card).toContainText("具備簽單條件");
+    await expect(card).not.toContainText("具備簽單條件");
     await expect(page.locator('[data-stage="MEETING"]')).toContainText(CLIENT_1);
   });
 

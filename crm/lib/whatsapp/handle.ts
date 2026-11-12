@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { createAdminClient } from "../supabase/admin";
 import { addDays, hkToday, isDate } from "../weeks";
+import { ageFromBirthDate } from "../age";
 import { AiRefusal, extractFromMessage } from "./ai";
 import { applyDraft, describeDraft, hasContent, loadClientNames, matchClient, type Draft } from "./apply";
 import { latestPending, reopen, sealDraft, setStatus } from "./drafts";
@@ -141,6 +142,11 @@ export async function processIncoming(
   if (extraction.response?.kind === "chat") {
     if (channel === "telegram") return deliverCoachReply(admin, ownerId, msg.from, text, extraction.response.text, deliverText);
     return sendText(msg.from, extraction.response.text || "可以講多少少，你想問邊一部分？");
+  }
+  const birthday = extraction.client?.birth_date?.normalize("NFKC").replace(/\s+/gu, "");
+  if (birthday && texts.join("\n").normalize("NFKC").replace(/\s+/gu, "").includes(birthday)) {
+    const age = ageFromBirthDate(birthday, today);
+    if (age !== null) extraction.client.age = String(age);
   }
   let named;
   try {

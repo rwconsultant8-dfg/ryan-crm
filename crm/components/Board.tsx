@@ -20,7 +20,7 @@ import {
 } from "@dnd-kit/core";
 import { moveSeasonAction, moveStageAction, unsignAction } from "@/app/(app)/clients/actions";
 import { hkToday } from "@/lib/weeks";
-import { GENDERS, STAGES, boardStage, isClosedStage, isStage, missingChecks, stageLabel, type Checks, type Stage } from "@/lib/stages";
+import { GENDERS, STAGES, boardStage, isClosedStage, isStage, type Checks, type Stage } from "@/lib/stages";
 import { NO_SEASON, SIGNED_ZONE, normalizeSeason, stageForSeason, type SeasonColumn } from "@/lib/seasons";
 
 export type BoardCard = {
@@ -48,7 +48,6 @@ function CardBody({ c }: { c: BoardCard }) {
       <div className="row">
         <span className="name">{c.name || "（未命名）"}</span>{c.customerType && <span className="badge badge-grey">{customerTypeLabel(c.customerType)}</span>}{c.ownerName&&<small className="compact-next">負責：{c.ownerName}</small>}
         <span className="spacer" />
-        {c.ready && !isClosedStage(c.stage) && <span className="badge badge-green">具備簽單條件</span>}
       </div>
       {meta && <div className="meta">{meta}</div>}
       {c.next !== undefined && c.stage !== "SIGNED" && c.stage !== "ISSUED" && <div className={`next-step ${c.next ? "" : "not-planned"}`}>
@@ -60,9 +59,8 @@ function CardBody({ c }: { c: BoardCard }) {
   );
 }
 
-// 人脈網精簡卡片：綠色＝具備簽單條件。
 function NameOnly({ c }: { c: BoardCard }) {
-  return <><span className="name">{c.name || "（未命名）"}</span>{c.customerType && <span className="badge badge-grey">{customerTypeLabel(c.customerType)}</span>}{c.ready && !isClosedStage(c.stage) && <span className="badge badge-green">具備簽單條件</span>}{c.next !== undefined && c.stage!=="SIGNED" && c.stage!=="ISSUED" && <small className="compact-next">{c.next ? `${c.next.day<hkToday()?"逾期 · ":""}${c.next.day.slice(5)} · ${c.next.plan}` : "未安排"}</small>}</>;
+  return <><span className="name">{c.name || "（未命名）"}</span>{c.customerType && <span className="badge badge-grey">{customerTypeLabel(c.customerType)}</span>}{c.next !== undefined && c.stage!=="SIGNED" && c.stage!=="ISSUED" && <small className="compact-next">{c.next ? `${c.next.day<hkToday()?"逾期 · ":""}${c.next.day.slice(5)} · ${c.next.plan}` : "未安排"}</small>}</>;
 }
 
 function DraggableCard({ c, readOnly, compact }: { c: BoardCard; readOnly: boolean; compact: boolean }) {
@@ -71,7 +69,7 @@ function DraggableCard({ c, readOnly, compact }: { c: BoardCard; readOnly: boole
     <Link
       href={`/clients/${c.id}`}
       ref={setNodeRef}
-      className={`client-card${compact ? " compact" : ""}${c.ready ? " ready" : ""}${isDragging ? " dragging" : ""}`}
+      className={`client-card${compact ? " compact" : ""}${isDragging ? " dragging" : ""}`}
       data-testid="client-card"
       {...(readOnly ? {} : listeners)}
       {...(readOnly ? {} : attributes)}
@@ -180,19 +178,14 @@ export default function Board({
     setError(null);
     setNotice(null);
 
-    const confirmClosing = (stage: Stage) =>
-      card.ready || isClosedStage(card.stage) || window.confirm(
-        `「${card.name}」仲有 ${missingChecks(card.checks).length} 項簽單條件未完成。確定轉去 ${stageLabel(stage)}？`,
-      );
     if (groupBy === "stage") {
-      if (!isStage(to) || (isClosedStage(to) && !confirmClosing(to))) return;
+      if (!isStage(to)) return;
       setCards((cs) => cs.map((c) => (c.id === id ? { ...c, stage: to } : c)));
       return run(prev, () => moveStageAction(id, to));
     }
 
     // 已簽客戶獨立放喺三欄下面。
     if (to === SIGNED_ZONE) {
-      if (!confirmClosing("SIGNED")) return;
       setCards((cs) => cs.map((c) => (c.id === id ? { ...c, stage: "SIGNED" } : c)));
       return run(
         prev,
@@ -233,7 +226,7 @@ export default function Board({
         {groupBy === "season" && <SignedClients cards={cards.filter(isSigned)} readOnly={readOnly} />}
         <DragOverlay>
           {active ? (
-            <div className={`client-card drag-overlay${compact || simple ? " compact" : ""}${active.ready ? " ready" : ""}`}>
+            <div className={`client-card drag-overlay${compact || simple ? " compact" : ""}`}>
               {compact || simple ? <NameOnly c={active} /> : <CardBody c={active} />}
             </div>
           ) : null}

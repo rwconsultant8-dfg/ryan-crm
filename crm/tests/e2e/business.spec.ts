@@ -54,7 +54,6 @@ test.describe.serial("人脈網拖去已簽 ＋ 每月生意表", () => {
     await drag(page, NAME, "SUMMER");
     await expect(page.locator('[data-stage="SUMMER"]')).toContainText(NAME);
 
-    page.once("dialog", (d) => d.accept()); // 未具備簽單條件，確認照簽
     await drag(page, NAME, "SIGNED_ZONE");
     await expect(page.locator('[data-stage="SIGNED_ZONE"]')).toContainText(NAME);
     await expect(page.getByTestId("board-notice")).toContainText(`「${NAME}」已簽`);

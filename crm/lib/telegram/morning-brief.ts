@@ -54,7 +54,7 @@ export async function verifyMomoPreviewRecipient(db: SupabaseClient) {
   if (!id || [...links.values()].filter((linkedId) => linkedId === id).length !== 1) {
     throw Error("Preview Telegram binding unavailable");
   }
-  return id;
+  return { id, ownerId: matches[0].id };
 }
 
 type Entry = { owner: string; time: string };
@@ -98,11 +98,18 @@ export function renderMorningBrief(day: string, staff: Map<string, string>, appo
   ].join("\n\n");
 }
 
-export async function loadMorningBrief(db: SupabaseClient, day: string, now: number, test: boolean) {
+export async function loadMorningBrief(db: SupabaseClient, day: string, now: number, test: boolean, appointmentOwner?: string) {
+  let dayQuery = db.from("activity_days").select("owner_id,day,appts").eq("day", day);
+  let taskQuery = db.from("daily_tasks").select("id,owner_id,info").eq("day", day)
+    .eq("category", "appointment").in("status", ["planned", "blocked", "done"]);
+  if (appointmentOwner) {
+    dayQuery = dayQuery.eq("owner_id", appointmentOwner);
+    taskQuery = taskQuery.eq("owner_id", appointmentOwner);
+  }
   const [profiles, days, tasks, drafts] = await Promise.all([
     db.from("profiles").select("id,full_name").eq("active", true).order("full_name").limit(1000),
-    db.from("activity_days").select("owner_id,day,appts").eq("day", day).limit(1000),
-    db.from("daily_tasks").select("id,owner_id,info").eq("day", day).eq("category", "appointment").in("status", ["planned", "blocked", "done"]).limit(1000),
+    dayQuery.limit(1000),
+    taskQuery.limit(1000),
     db.from("wa_drafts").select("id,owner_id,status,payload").in("status", ["pending", "applied"]).gte("created_at", new Date(now - 24 * hour).toISOString()).lte("created_at", new Date(now).toISOString()).order("created_at", { ascending: false }).limit(1000),
   ]);
   if ([profiles, days, tasks, drafts].some((r) => r.error || !r.data || r.data.length >= 1000)) throw Error("Incomplete CRM read");

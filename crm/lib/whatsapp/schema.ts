@@ -19,6 +19,7 @@ export const extractionSchema = z.object({
   client: z.object({
     name: z.string(),
     age: z.string(),
+    birth_date: z.string().max(40).optional(),
     gender: z.enum(["", ...GENDERS.map((g) => g.value)] as [string, ...string[]]),
     occupation: z.string(),
     marital: z.enum(["", ...MARITAL.map((m) => m.value)] as [string, ...string[]]),
@@ -65,10 +66,11 @@ export const extractionJsonSchema = {
     client: {
       type: "object",
       additionalProperties: false,
-      required: ["name", "age", "gender", "occupation", "marital", "customer_type"],
+      required: ["name", "age", "birth_date", "gender", "occupation", "marital", "customer_type"],
       properties: {
         name: { type: "string" },
         age: { type: "string", description: "客戶本人目前年齡；50幾歲填50幾，約55歲填約55，50至59歲填50-59。保留不確定程度，唔推算確實年齡。" },
+        birth_date: { type: "string", description: "原文中客戶本人完整出生年月日，資料不足留空。" },
         gender: { type: "string", enum: ["", ...GENDERS.map((g) => g.value)] },
         occupation: { type: "string" },
         marital: { type: "string", enum: ["", ...MARITAL.map((m) => m.value)] },

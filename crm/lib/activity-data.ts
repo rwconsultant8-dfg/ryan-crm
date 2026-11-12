@@ -43,7 +43,17 @@ export async function loadCalendarEntries(supabase: SupabaseClient, ownerId: str
   }
 }
 
-export async function loadTeamCalendarEntries(db:SupabaseClient,from:string){
- const entries:(ReturnType<typeof calendarEntries>[number]&{owner_id:string})[]=[];
- for(let offset=0;;offset+=500){const {data,error}=await db.from("activity_days").select("owner_id,day,appts").gte("day",from).order("day").order("owner_id").range(offset,offset+499);if(error)throw Error("未能讀取團隊日曆");for(const row of (data||[]) as Row[]){const appts=decryptColumn(apptRecordId(row.owner_id,row.day),"appts",row.appts);entries.push(...calendarEntries([{day:row.day,appts}],APPT_SLOTS).map(entry=>({...entry,owner_id:row.owner_id})));}if(!data||data.length<500)return entries;}
+export async function loadTeamCalendarEntries(db: SupabaseClient, from: string, ownerId?: string) {
+  const entries: (ReturnType<typeof calendarEntries>[number] & {owner_id:string})[] = [];
+  for (let offset = 0; ; offset += 500) {
+    let query = db.from("activity_days").select("owner_id,day,appts").gte("day",from);
+    if (ownerId) query = query.eq("owner_id",ownerId);
+    const { data, error } = await query.order("day").order("owner_id").range(offset,offset+499);
+    if (error) throw Error("未能讀取日曆");
+    for (const row of (data ?? []) as Row[]) {
+      const appts = decryptColumn(apptRecordId(row.owner_id,row.day),"appts",row.appts);
+      entries.push(...calendarEntries([{day:row.day,appts}],APPT_SLOTS).map(entry=>({...entry,owner_id:row.owner_id})));
+    }
+    if (!data || data.length < 500) return entries;
+  }
 }

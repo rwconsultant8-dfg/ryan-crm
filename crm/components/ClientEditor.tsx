@@ -10,13 +10,8 @@ import { type SeasonColumn } from "@/lib/seasons";
 import {
   GENDERS,
   MARITAL,
-  RR_CHECKS,
-  NR2_CHECKS,
-  isClosedStage,
-  missingChecks,
   proposalUrl,
   stageLabel,
-  type CheckKey,
   formFieldKeys,
   STAGES,
   type Checks,
@@ -35,7 +30,7 @@ export type EditorClient = {
   forms: Record<FormColumn, Record<string, string>>;
 };
 
-type DirtyKey = "info" | "checks" | FormColumn;
+type DirtyKey = "info" | FormColumn;
 
 export function ClientStageForm({ phase, forms, info = {}, readOnly, onChange }: {
   phase: Stage;
@@ -132,7 +127,6 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
   const [tab, setTab] = useState<Stage>("MEETING");
   const [info, setInfo] = useState<Info>(client.info);
   const [forms, setForms] = useState(client.forms);
-  const [checks, setChecks] = useState(client.checks);
   const [stage, setStage] = useState<Stage>(client.stage);
   const [dirty, setDirty] = useState<Map<DirtyKey, Set<string>>>(new Map());
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -177,27 +171,20 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
       return n;
     });
 
-  const activeChecks = tab === "MEETING" ? RR_CHECKS : tab === "FOLLOWUP" ? NR2_CHECKS : [];
-  const changedChecks = () => Object.fromEntries(activeChecks
-    .filter(({ key }) => dirty.get("checks")?.has(key))
-    .map(({ key }) => [key, checks[key]])) as Partial<Checks>;
   const changedValues = (column: FormColumn) => Object.fromEntries(
     [...(dirty.get(column) ?? [])].map((key) => [key, forms[column]?.[key] ?? ""]),
   );
   const save = () => {
-    const checkChanges = changedChecks();
-    const checkKeys = Object.keys(checkChanges);
     if (tab === "MEETING") {
       const infoChanges = Object.fromEntries([...(dirty.get("info") ?? [])].map((key) => [key, info[key as keyof Info] ?? ""]));
       const formChanges: Partial<Record<"form_rr" | "form_nr1", Record<string, string>>> = {};
       for (const column of ["form_rr", "form_nr1"] as const) {
         if (dirty.has(column)) formChanges[column] = changedValues(column);
       }
-      run(() => saveFactFindingAction(client.id, infoChanges, formChanges, checkChanges), () => {
+      run(() => saveFactFindingAction(client.id, infoChanges, formChanges, {}), () => {
         clearDirty("info");
         clearDirty("form_rr");
         clearDirty("form_nr1");
-        clearDirty("checks", checkKeys);
       });
       return;
     }
@@ -206,16 +193,12 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
     if (!def) return;
     const keys = formFieldKeys(def).filter((key) => dirty.get(def.column)?.has(key));
     const values = Object.fromEntries(keys.map((key) => [key, forms[def.column]?.[key] ?? ""]));
-    run(() => saveFormAction(client.id, def.stage, values, checkChanges), () => {
+    run(() => saveFormAction(client.id, def.stage, values, {}), () => {
       clearDirty(def.column, keys);
-      clearDirty("checks", checkKeys);
     });
   };
 
   const changeStage = (to: Stage) => {
-    const outstanding = missingChecks(client.checks);
-    if (isClosedStage(to) && !isClosedStage(stage) && outstanding.length
-      && !window.confirm(`仲有 ${outstanding.length} 項簽單條件未完成。確定轉去 ${stageLabel(to)}？`)) return;
     const prev = stage;
     setStage(to);
     setMsg(null);
@@ -243,14 +226,7 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
 
   const tabDirty = (key: Stage) =>
     (key === "MEETING" && dirty.has("info"))
-    || (key === "MEETING" && RR_CHECKS.some((check) => dirty.get("checks")?.has(check.key)))
-    || (key === "FOLLOWUP" && NR2_CHECKS.some((check) => dirty.get("checks")?.has(check.key)))
     || CLIENT_FORMS.some((form) => form.phase === key && formFieldKeys(form).some((field) => dirty.get(form.column)?.has(field)));
-  const remaining = missingChecks(checks).length;
-  const setCheck = (key: CheckKey, checked: boolean) => {
-    setChecks((previous) => ({ ...previous, [key]: checked }));
-    markDirty("checks", key);
-  };
   const genderText = GENDERS.find((g) => g.value === info.gender)?.label;
   const maritalText = MARITAL.find((m) => m.value === info.marital)?.label;
   const meta = [info.age && ageLabel(info.age), genderText, info.occupation, maritalText].filter(Boolean).join(" · ");
@@ -313,20 +289,6 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
           </section>
         )}
         <ClientStageForm phase={tab} forms={forms} info={info} readOnly={readOnly || pending} onChange={setField} />
-        {activeChecks.length > 0 && (
-          <fieldset className="client-fieldset">
-            <legend>簽單條件</legend>
-            <p className="muted small" data-testid="ready-box">{remaining ? `仲差 ${remaining} 格` : "具備簽單條件"}</p>
-            {activeChecks.map(({ key, label }) => (
-              <label className="check-row" key={key}>
-                <input type="checkbox" checked={checks[key]} disabled={readOnly || pending}
-                  onChange={(event) => setCheck(key, event.target.checked)} />
-                {label}
-              </label>
-            ))}
-          </fieldset>
-        )}
-
         {!readOnly && (
           <div className="savebar">
             <button className="btn btn-primary" onClick={save} disabled={pending || !tabDirty(tab)}>

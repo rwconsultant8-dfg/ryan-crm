@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { loadFollowups } from "@/lib/planner-data";
+import { canViewTeamCalendar } from "@/lib/member-identity";
 import { loadCalendarEntries } from "@/lib/activity-data";
 import { decryptColumn } from "@/lib/secure";
 import { readContactHistory } from "@/lib/followups";
@@ -32,7 +33,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
   let coaching:Awaited<ReturnType<typeof loadCoaching>>=[],coachingError=false;
   try{coaching=(await loadCoaching(supabase,client.owner_id)).filter(note=>note.clientId===id);}catch{coachingError=true;}
   const [allTasks, allAppointments, {data: contactRow}] = await Promise.all([
-    loadFollowups(supabase,client.owner_id), loadCalendarEntries(supabase,client.owner_id),
+    loadFollowups(supabase,client.owner_id), !readOnly||canViewTeamCalendar(profile)?loadCalendarEntries(supabase,client.owner_id):Promise.resolve([]),
     supabase.from("clients").select("info").eq("id",id).maybeSingle(),
   ]);
   const contactInfo = contactRow ? decryptColumn(id,"info",contactRow.info) : {};

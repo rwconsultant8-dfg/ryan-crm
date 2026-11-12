@@ -1,3 +1,4 @@
+import { ageFromBirthDate } from "@/lib/age";
 import {describe,it,expect} from "vitest";
 import {normalizeAge,ageLabel} from "@/lib/age";
 import {applyDraft,describeDraft,type Draft} from "@/lib/whatsapp/apply";
@@ -17,4 +18,12 @@ describe("preserve age uncertainty in the age field",()=>{
   const patch=rpc.mock.calls[0][1].p_patch;expect(decryptColumn("client-a","info",patch.info).age).toBe("50幾");expect(patch.form_rr).toBeUndefined();expect(describeDraft(draft)).toContain("50幾歲");expect(describeDraft(draft)).not.toContain("歲歲");
   const existing={...draft,target:{mode:"existing" as const,id:"client-a",name:"陳生"}};expect(describeDraft(existing)).toContain("【基本資料（空白欄位會補填）】\n年齡：50幾歲");
  });
+});
+
+it("uses completed years and leaves ambiguous or invalid birth dates unresolved", () => {
+  expect(ageFromBirthDate("99年11月15號","2026-11-12")).toBe(26);
+  expect(ageFromBirthDate("1999年11月15日","2026-11-15")).toBe(27);
+  expect(ageFromBirthDate("11年3月1號","2026-11-12")).toBeNull();
+  expect(ageFromBirthDate("1999-02-29","2026-11-12")).toBeNull();
+  expect(ageFromBirthDate("11月15號","2026-11-12")).toBeNull();
 });

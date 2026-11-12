@@ -1,6 +1,7 @@
 import Link from "next/link";
 import ActivityWeek from "@/components/ActivityWeek";
 import { requireUser, displayName, type Profile } from "@/lib/auth";
+import { canViewTeamCalendar } from "@/lib/member-identity";
 import {isCalendarTask} from "@/lib/calendar-tasks";
 import { loadFollowups } from "@/lib/planner-data";
 import { listClientCards } from "@/lib/data";
@@ -26,12 +27,12 @@ function CalendarFilters({ people, ownerId, monday }: { people: Profile[]; owner
 export default async function ActivityPage({ searchParams }: { searchParams: Promise<{ week?: string; agent?: string; client?: string }> }) {
   const sp = await searchParams;
   const { supabase, profile } = await requireUser();
-  const isAdmin = profile.role === "admin";
+  const teamCalendar = canViewTeamCalendar(profile);
   const today = hkToday();
   const monday = mondayOf(isDate(sp.week) ? sp.week : today);
   let owner = profile;
   let people: Profile[] = [];
-  if (isAdmin) {
+  if (teamCalendar) {
     const result = await supabase.from("profiles").select("id, email, full_name, role, active").order("full_name");
     if (result.error) return <><h1>日曆</h1><p className="error" role="alert">暫時未能讀取同事名單，請重新載入。</p></>;
     people = (result.data ?? []) as Profile[];
@@ -45,7 +46,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const readOnly = owner.id !== profile.id;
   const [days, cards, allTasks] = await Promise.all([loadWeek(supabase, owner.id, monday),listClientCards(supabase,owner.id),loadFollowups(supabase,owner.id)]);
   const wk = isoWeek(monday);
-  const q = (w: string) => `/activity?week=${w}${isAdmin ? `&agent=${owner.id}` : ""}`;
+  const q = (w: string) => `/activity?week=${w}${teamCalendar ? `&agent=${owner.id}` : ""}`;
 
   return (
     <>
@@ -57,7 +58,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
       <div className="row" style={{ marginBottom: 8 }}>
         <h1 style={{ margin: 0 }}>{readOnly ? `${displayName(owner)} 嘅日曆` : "日曆"}</h1>
       </div>
-      {isAdmin && <CalendarFilters people={people} ownerId={owner.id} monday={monday} />}
+      {teamCalendar && <CalendarFilters people={people} ownerId={owner.id} monday={monday} />}
       {readOnly && <p className="notice">主管查看模式：同事日曆唯讀，由負責同事更新。</p>}
       <div className="row" style={{ marginBottom: 12 }}>
         <Link className="btn btn-sm" href={q(addDays(monday, -7))}>

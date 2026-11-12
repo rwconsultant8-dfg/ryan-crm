@@ -1,4 +1,5 @@
 import React from "react";
+import { createHash } from "node:crypto";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Profile } from "@/lib/auth";
@@ -13,7 +14,7 @@ const people: Profile[] = [
 vi.mock("@/lib/auth", () => ({
   displayName: (person: Profile) => person.full_name || person.email,
   requireUser: async () => ({
-    profile: state.role === "admin" ? people[0] : people[1],
+    profile: state.role === "admin" ? people[0] : state.role === "other-admin" ? {...people[1],role:"admin",full_name:"Ryan"} : people[1],
     supabase: { from: (table: string) => {
       state.tables.push(table);
       return { select: () => ({ order: async () => ({ data: people, error: state.profileError ? { message: "unavailable" } : null }) }) };
@@ -29,12 +30,13 @@ import ActivityPage from "@/app/(app)/activity/page";
 
 beforeEach(() => {
   vi.stubGlobal("React", React);
+  vi.stubEnv("ZEST_RYAN_CALENDAR_EMAIL_HASH",createHash("sha256").update("ryan@test").digest("hex"));
   state.role = "admin"; state.profileError = false; state.tables = [];
   state.week.mockReset().mockImplementation(async (_db, owner, monday) => [{ day: monday, appts: { breakfast: `${owner} 原有約會` } }]);
   state.cards.mockReset().mockResolvedValue([]);
   state.tasks.mockReset().mockImplementation(async (_db, owner) => [{ id: "appointment", owner_id: owner, day: "2026-11-09", category: "appointment", stage: "", name: `${owner} 客戶`, plan: "Telegram 見客安排", time: "15:00", status: "planned", result: "", updated_at: "" }]);
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {vi.unstubAllGlobals();vi.unstubAllEnvs();});
 const page = async (query: { agent?: string; week?: string } = {}) => renderToStaticMarkup(await ActivityPage({ searchParams: Promise.resolve({ week: "2026-11-09", ...query }) }));
 
 describe("主管查看同事日曆", () => {
@@ -72,6 +74,13 @@ describe("主管查看同事日曆", () => {
     expect(html).not.toContain("查看同事日曆");
     expect(html).not.toContain("Chelsea");
     expect(html).toContain("儲存日曆");
+  });
+  it("does not grant another admin access even with Ryan as their display name", async () => {
+    state.role = "other-admin";
+    const html = await page({ agent: "chelsea" });
+    expect(state.tables).not.toContain("profiles");
+    expect(state.week).toHaveBeenCalledWith(expect.anything(),"momo","2026-11-09");
+    expect(html).not.toContain("Chelsea");
   });
   it("reports an unknown colleague without quietly displaying somebody else's calendar", async () => {
     expect(await page({ agent: "unknown" })).toContain("搵唔到呢位同事");
