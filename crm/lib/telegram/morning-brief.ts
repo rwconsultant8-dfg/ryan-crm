@@ -25,6 +25,12 @@ export function briefDay(now: number, test: boolean) {
   return localTime >= "09:30" && localTime < "10:30" ? hkToday(now) : null;
 }
 
+export function briefDeliveryKey(mode: string, day: string, requestIds: string[]) {
+  if (requestIds.length === 0) return `zest-ryan-brief-v1:${mode}:${day}`;
+  if (mode !== "test" || requestIds.length !== 1 || !/^[a-f0-9]{32}$/.test(requestIds[0])) return null;
+  return `zest-ryan-brief-v1:test:manual:${requestIds[0]}`;
+}
+
 export async function verifyBriefRecipient(db: SupabaseClient) {
   const config = process.env.ZEST_BRIEF_RECIPIENT ?? "";
   const [id, emailHash] = config.split(":");

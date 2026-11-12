@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { briefAuthorized, briefDay, renderMorningBrief } from "@/lib/telegram/morning-brief";
+import { briefAuthorized, briefDay, briefDeliveryKey, renderMorningBrief } from "@/lib/telegram/morning-brief";
 
 describe("Ryan Telegram brief", () => {
   it("requires a dedicated valid bearer token", () => {
@@ -17,6 +17,20 @@ describe("Ryan Telegram brief", () => {
     expect(briefDay(Date.parse("2026-11-12T01:30:00Z"), false)).toBe("2026-11-12");
     expect(briefDay(Date.parse("2026-11-12T02:30:00Z"), false)).toBeNull();
     expect(briefDay(Date.parse("2026-11-12T23:30:00Z"), true)).toBe("2026-11-13");
+  });
+
+  it("deduplicates an intentional retest separately from the automatic daily brief", () => {
+    const day = "2026-11-12";
+    const id = "a".repeat(32);
+    const key = briefDeliveryKey("test", day, [id]);
+    expect(key).toBe(briefDeliveryKey("test", "2026-11-13", [id]));
+    expect(key).not.toBe(briefDeliveryKey("test", day, []));
+    expect(key).not.toBe(briefDeliveryKey("test", day, ["b".repeat(32)]));
+    expect(briefDeliveryKey("daily", day, [])).toBe(`zest-ryan-brief-v1:daily:${day}`);
+    expect(briefDeliveryKey("daily", day, [id])).toBeNull();
+    expect(briefDeliveryKey("check", day, [id])).toBeNull();
+    expect(briefDeliveryKey("test", day, [id, id])).toBeNull();
+    expect(briefDeliveryKey("test", day, ["invalid"])).toBeNull();
   });
 
   it("reports each active colleague’s times and update statuses without appointment or update text", () => {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveCoachToken } from "@/lib/telegram/credentials";
-import { briefAuthorized, briefDay, loadMorningBrief, verifyBriefRecipient } from "@/lib/telegram/morning-brief";
+import { briefAuthorized, briefDay, briefDeliveryKey, loadMorningBrief, verifyBriefRecipient } from "@/lib/telegram/morning-brief";
 
 export const dynamic = "force-dynamic";
 const response = (status: string, code = 200) => NextResponse.json({ status }, { status: code, headers: { "Cache-Control": "no-store" } });
@@ -12,6 +12,8 @@ export async function POST(request: NextRequest) {
   if (!["daily", "test", "check"].includes(mode)) return response("invalid_mode", 400);
   const now = Date.now(), day = briefDay(now, mode !== "daily");
   if (!day) return response("outside_schedule", 409);
+  const key = briefDeliveryKey(mode, day, request.nextUrl.searchParams.getAll("request_id"));
+  if (!key) return response("invalid_request_id", 400);
   let phase = "recipient";
   try {
     const db = createAdminClient();
@@ -22,7 +24,6 @@ export async function POST(request: NextRequest) {
     if (mode === "check") return response("ready");
 
     phase = "claim";
-    const key = `zest-ryan-brief-v1:${mode}:${day}`;
     const claim = await db.from("wa_seen_messages").insert({ message_id: key });
     if (claim.error?.code === "23505") {
       const sent = await db.from("wa_seen_messages").select("message_id").eq("message_id", `${key}:sent`).maybeSingle();
