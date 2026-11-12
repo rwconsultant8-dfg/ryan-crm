@@ -83,3 +83,14 @@ export async function queueNoteRecovery(db: SupabaseClient) {
   await enqueueJob(db, job);
   console.info("Original Telegram note recovery queued");
 }
+
+export async function noteRecoveryState(db: SupabaseClient) {
+  if (!process.env.ZEST_NOTE_RECOVERY) return { state: "disabled" };
+  const { owner, sentAt } = setting.parse(JSON.parse(process.env.ZEST_NOTE_RECOVERY));
+  const id = jobId(`telegram-note-recovery:${owner}:${sentAt}`);
+  const { data, error } = await db.from("wa_drafts").select("payload,created_at").eq("id", id).eq("owner_id", owner).maybeSingle();
+  if (error) throw Error("Could not read recovery state");
+  if (!data) return { state: "not_queued" };
+  const job = openJob(id, data.payload);
+  return { state: job.state, queuedAt: data.created_at, updatedAt: job.updated ?? null };
+}
