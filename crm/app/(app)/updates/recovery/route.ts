@@ -13,9 +13,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const status = await completeExpiredNoteRecovery(createAdminClient(), request.headers.get("authorization"));
-  return NextResponse.json({status}, {
-    status: status === "unauthorized" ? 401 : 200,
+  const result = await completeExpiredNoteRecovery(createAdminClient(), request.headers.get("authorization"));
+  return NextResponse.json(result, {
+    status: result.status === "unauthorized" ? 401 : 200,
     headers: { "Cache-Control": "no-store" },
   });
 }

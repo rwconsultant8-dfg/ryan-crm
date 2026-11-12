@@ -7,6 +7,8 @@ import { resolveTelegramAgent } from "../telegram/registry";
 import { loadClientNames, matchClient } from "../whatsapp/apply";
 import { latestPending } from "../whatsapp/drafts";
 import type { Extraction } from "../whatsapp/schema";
+import { readContactHistory } from "../followups";
+import { decryptColumn } from "../secure";
 import { processIncoming } from "../whatsapp/handle";
 import { extractReviewedNote } from "./reviewed-note";
 import { hkToday } from "../weeks";
@@ -97,35 +99,61 @@ export async function noteRecoveryState(db: SupabaseClient) {
   return { state: job.state, queuedAt: data.created_at, updatedAt: job.updated ?? null };
 }
 
-/** An expired replay can be completed once with reviewed extraction from the same encrypted input. */
+async function inspectRecoveryClient(db: SupabaseClient, owner: string, extraction: Extraction) {
+  const names = (await loadClientNames(db, owner)).filter((client) => client.name.trim());
+  const name = extraction.client.name;
+  const exact = names.filter((client) => hashName(client.name) === hashName(name));
+  if (exact.length > 1) return { status: "ambiguous_client" };
+  if (!exact.length) return { status: matchClient(name, names).mode === "new" ? "new" : "ambiguous_client" };
+
+  const id = exact[0].id;
+  const { data, error } = await db.from("clients").select("info,form_rr").eq("id", id).eq("owner_id", owner).single();
+  if (error || !data) throw Error("Could not verify the client");
+  const info = decryptColumn(id, "info", data.info);
+  const currentWork = info.occupation?.trim();
+  const fields = decryptColumn(id, "form_rr", data.form_rr);
+  const normalize = (value: string) => value.normalize("NFKC").replace(/[\s,，]/g, "");
+  const relevant = readContactHistory(info.contact_history).filter((event) => event.kind === "contact" && event.day === extraction.date);
+  const amounts = extraction.fields.find((field) => field.field === "form_rr.finance")?.text.split("\n").slice(0, 2)
+    .map((line) => line.match(/\d[\d,.]*/)?.[0]).filter((amount): amount is string => Boolean(amount)) ?? [];
+  if (relevant.some((event) => {
+    const text = normalize((event.meeting?.summary || event.text) + (fields.finance || ""));
+    return /拒保|被拒/.test(text) && /儲蓄/.test(text) && amounts.length === 2 &&
+      amounts.every((amount) => text.includes(normalize(amount)));
+  })) return { status: "verified", clientPath: `/clients/${id}` };
+
+  if (currentWork && currentWork !== extraction.client.occupation) return { status: "occupation_mismatch" };
+  return { status: relevant.length ? "existing_meeting_requires_review" : "existing" };
+}
+
 export async function completeExpiredNoteRecovery(db: SupabaseClient, authorization: string | null) {
-  if (!process.env.ZEST_NOTE_RECOVERY) return "unauthorized";
+  if (!process.env.ZEST_NOTE_RECOVERY) return { status: "unauthorized" };
   const config = setting.parse(JSON.parse(process.env.ZEST_NOTE_RECOVERY));
   const token = /^Bearer ([0-9a-f]{64})$/.exec(authorization ?? "")?.[1];
   const expectedHash = process.env.ZEST_NOTE_RECOVERY_FALLBACK_HASH ?? "";
   if (!token || !/^[a-f0-9]{64}$/.test(expectedHash) ||
-      !timingSafeEqual(createHash("sha256").update(token).digest(), Buffer.from(expectedHash, "hex"))) return "unauthorized";
-  if (Date.now() - Date.parse(config.sentAt) > 6 * 3600_000) return "expired";
+      !timingSafeEqual(createHash("sha256").update(token).digest(), Buffer.from(expectedHash, "hex"))) return { status: "unauthorized" };
+  if (Date.now() - Date.parse(config.sentAt) > 6 * 3600_000) return { status: "expired" };
 
   const id = jobId(`telegram-note-recovery:${config.owner}:${config.sentAt}`);
   const { data, error } = await db.from("wa_drafts").select("payload,decided_at,created_at").eq("id", id).eq("owner_id", config.owner).maybeSingle();
   if (error) throw Error("Could not read recovery");
-  if (!data) return "not_queued";
+  if (!data) return { status: "not_queued" };
   const job = openJob(id, data.payload);
-  if (job.ownerId !== config.owner || job.recoveryNameHash !== config.nameHash) return "source_mismatch";
-  // Retries renew the lease. Allow the reviewed path after the initial wait budget;
-  // finishJob compares the observed revision, so only one path can apply the note.
-  const waitExpired = Date.now() - Date.parse(data.created_at) >= 10 * 60_000;
-  if (job.state !== "failed" && (job.state !== "running" || !waitExpired)) return job.state || "pending";
+  if (job.ownerId !== config.owner || job.recoveryNameHash !== config.nameHash) return { status: "source_mismatch" };
 
   const extraction = extractReviewedNote(job.text, job.today);
-  if (!extraction || !recoveryMatches(extraction, config.nameHash)) return "review_mismatch";
-  const [agent, names, pending] = await Promise.all([
-    resolveTelegramAgent(db, job.from), loadClientNames(db, job.ownerId), latestPending(db, job.ownerId),
+  if (!extraction || !recoveryMatches(extraction, config.nameHash)) return { status: "review_mismatch" };
+  const [agent, pending, target] = await Promise.all([
+    resolveTelegramAgent(db, job.from), latestPending(db, job.ownerId), inspectRecoveryClient(db, job.ownerId, extraction),
   ]);
-  if (agent?.id !== job.ownerId) return "binding_changed";
-  if (matchClient(extraction.client.name, names).mode !== "new") return "client_exists";
-  if ((pending?.draft.channel === "telegram" ? pending.id : null) !== job.expectedDraftId) return "pending_changed";
+  if (agent?.id !== job.ownerId) return { status: "binding_changed" };
+  if (!["new", "existing"].includes(target.status)) return target;
+
+  // Retrying renews the worker lease. Consume the observed revision after the initial wait.
+  const waitExpired = Date.now() - Date.parse(data.created_at) >= 10 * 60_000;
+  if (job.state !== "failed" && (job.state !== "running" || !waitExpired)) return { status: job.state || "pending" };
+  if ((pending?.draft.channel === "telegram" ? pending.id : null) !== job.expectedDraftId) return { status: "pending_changed" };
 
   await finishJob(db, id, data.decided_at, job, "done");
   await processIncoming({ from:job.from, messageId:job.messageId, type:"text", text:job.text }, job.ownerId, db,
@@ -136,5 +164,6 @@ export async function completeExpiredNoteRecovery(db: SupabaseClient, authorizat
         return extraction;
       },
     });
-  return "processed";
+  const saved = await inspectRecoveryClient(db, job.ownerId, extraction);
+  return saved.status === "verified" ? saved : { status: "write_not_verified" };
 }
