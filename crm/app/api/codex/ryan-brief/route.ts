@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveCoachToken } from "@/lib/telegram/credentials";
-import { briefAuthorized, briefDay, briefDeliveryKey, loadMorningBrief, verifyBriefRecipient } from "@/lib/telegram/morning-brief";
+import { briefAuthorized, briefDay, briefDeliveryKey, loadMorningBrief, verifyBriefRecipient, verifyMomoPreviewRecipient } from "@/lib/telegram/morning-brief";
 
 export const dynamic = "force-dynamic";
 const response = (status: string, code = 200) => NextResponse.json({ status }, { status: code, headers: { "Cache-Control": "no-store" } });
@@ -9,7 +9,7 @@ const response = (status: string, code = 200) => NextResponse.json({ status }, {
 export async function POST(request: NextRequest) {
   if (!briefAuthorized(request.headers.get("authorization"))) return response("unauthorized", 401);
   const mode = request.nextUrl.searchParams.get("mode") ?? "daily";
-  if (!["daily", "test", "check"].includes(mode)) return response("invalid_mode", 400);
+  if (!["daily", "test", "preview", "check"].includes(mode)) return response("invalid_mode", 400);
   const now = Date.now(), day = briefDay(now, mode !== "daily");
   if (!day) return response("outside_schedule", 409);
   const key = briefDeliveryKey(mode, day, request.nextUrl.searchParams.getAll("request_id"));
@@ -17,10 +17,11 @@ export async function POST(request: NextRequest) {
   let phase = "recipient";
   try {
     const db = createAdminClient();
-    const [recipient, token] = await Promise.all([verifyBriefRecipient(db), resolveCoachToken()]);
+    const recipientCheck = mode === "preview" ? verifyMomoPreviewRecipient(db) : verifyBriefRecipient(db);
+    const [recipient, token] = await Promise.all([recipientCheck, resolveCoachToken()]);
     if (!token) return response("bot_not_configured", 503);
     phase = "read";
-    const text = await loadMorningBrief(db, day, now, mode === "test");
+    const text = await loadMorningBrief(db, day, now, mode === "test" || mode === "preview");
     if (mode === "check") return response("ready");
 
     phase = "claim";

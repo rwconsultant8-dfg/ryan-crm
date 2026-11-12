@@ -29,6 +29,8 @@ describe("Ryan Telegram brief", () => {
     expect(briefDeliveryKey("daily", day, [])).toBe(`zest-ryan-brief-v1:daily:${day}`);
     expect(briefDeliveryKey("daily", day, [id])).toBeNull();
     expect(briefDeliveryKey("check", day, [id])).toBeNull();
+    expect(briefDeliveryKey("preview", day, [])).toBeNull();
+    expect(briefDeliveryKey("preview", day, [id])).not.toBe(key);
     expect(briefDeliveryKey("test", day, [id, id])).toBeNull();
     expect(briefDeliveryKey("test", day, ["invalid"])).toBeNull();
   });
@@ -48,5 +50,10 @@ describe("Ryan Telegram brief", () => {
     expect(result).toContain("Ada：上午、16:00");
     expect(result).toContain("Ben：1 項已入 CRM、1 項待同事確認");
     expect(result).not.toMatch(/private|09:11/);
+    expect(result.split("\n").slice(-3)).toEqual([
+      "團隊日曆：https://ryan-crm-chi.vercel.app/activity",
+      "同事更新：https://ryan-crm-chi.vercel.app/updates",
+      "每日任務：https://ryan-crm-chi.vercel.app/today",
+    ]);
   });
 });

@@ -7,7 +7,8 @@ import { calendarEntries, validTime } from "../followups";
 import { decryptColumn } from "../secure";
 import { openDraft } from "../whatsapp/drafts";
 import { hkToday } from "../weeks";
-import { resolveTelegramAgent, validTelegramId } from "./registry";
+import { listTelegramLinks, resolveTelegramAgent, validTelegramId } from "./registry";
+import { isMomoAvatarAccount } from "../member-identity";
 
 const crm = "https://ryan-crm-chi.vercel.app";
 const hour = 60 * 60 * 1000;
@@ -26,9 +27,9 @@ export function briefDay(now: number, test: boolean) {
 }
 
 export function briefDeliveryKey(mode: string, day: string, requestIds: string[]) {
-  if (requestIds.length === 0) return `zest-ryan-brief-v1:${mode}:${day}`;
-  if (mode !== "test" || requestIds.length !== 1 || !/^[a-f0-9]{32}$/.test(requestIds[0])) return null;
-  return `zest-ryan-brief-v1:test:manual:${requestIds[0]}`;
+  if (requestIds.length === 0 && mode !== "preview") return `zest-ryan-brief-v1:${mode}:${day}`;
+  if ((mode !== "test" && mode !== "preview") || requestIds.length !== 1 || !/^[a-f0-9]{32}$/.test(requestIds[0])) return null;
+  return `zest-ryan-brief-v1:${mode}:manual:${requestIds[0]}`;
 }
 
 export async function verifyBriefRecipient(db: SupabaseClient) {
@@ -39,6 +40,20 @@ export async function verifyBriefRecipient(db: SupabaseClient) {
   if (!agent) throw Error("Recipient binding unavailable");
   const { data, error } = await db.from("profiles").select("email").eq("id", agent.id).eq("role", "admin").eq("active", true).maybeSingle();
   if (error || !data || sha256(data.email.trim().toLowerCase()) !== emailHash) throw Error("Recipient binding unavailable");
+  return id;
+}
+
+export async function verifyMomoPreviewRecipient(db: SupabaseClient) {
+  const { data, error } = await db.from("profiles").select("id,email").eq("role", "admin").eq("active", true);
+  if (error) throw Error("Preview account unavailable");
+  const matches = (data ?? []).filter((profile) => isMomoAvatarAccount(profile.email));
+  if (matches.length !== 1) throw Error("Preview account unavailable");
+
+  const links = await listTelegramLinks(db);
+  const id = links.get(matches[0].id);
+  if (!id || [...links.values()].filter((linkedId) => linkedId === id).length !== 1) {
+    throw Error("Preview Telegram binding unavailable");
+  }
   return id;
 }
 
@@ -79,7 +94,7 @@ export function renderMorningBrief(day: string, staff: Map<string, string>, appo
     `Ryan，${day} ZEST 團隊更新${test ? "（試發）" : ""}`,
     `今日約見\n${list(a, "CRM 暫未有約見記錄。")}`,
     `過去 24 小時同事更新\n${list(u, "CRM 暫未有新增更新記錄。")}`,
-    `團隊日曆：${crm}/activity\n同事更新：${crm}/updates`,
+    `團隊日曆：${crm}/activity\n同事更新：${crm}/updates\n每日任務：${crm}/today`,
   ].join("\n\n");
 }
 
