@@ -2,7 +2,7 @@ import AuditList, { type AuditRow } from "@/components/AuditList";
 import { requireAdmin, displayName, type Profile } from "@/lib/auth";
 import { decryptColumn } from "@/lib/secure";
 
-const TABLE_LABELS: Record<string, string> = { activity_days: "活動分", pdca_weeks: "PDCA", okrs: "OKR", business_cases: "生意表", monthly_targets: "月目標", wa_drafts: "WhatsApp" };
+const TABLE_LABELS: Record<string, string> = { activity_days: "日曆", pdca_weeks: "PDCA", okrs: "OKR", business_cases: "生意表", monthly_targets: "月目標", wa_drafts: "WhatsApp" };
 
 export default async function AuditPage() {
   const { supabase } = await requireAdmin();

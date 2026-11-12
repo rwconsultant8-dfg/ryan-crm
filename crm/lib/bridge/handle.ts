@@ -5,15 +5,16 @@ import { BridgeError, type Identity } from "./auth";
 import { commandSchema, validatePatch, type Patch } from "./schema";
 import { encryptColumn, decryptColumn } from "../secure";
 import { encryptValue, parseKey } from "../crypto";
-import { INFO_KEYS, FORMS, CHECK_KEYS, formFieldKeys } from "../stages";
+import { INFO_KEYS, FORMS, CHECK_KEYS, formFieldKeys, normalizeStage } from "../stages";
 
 import { handleTaskCommand } from "./tasks";
+import { SEASONS, seasonForStage, pipelinePatch } from "../seasons";
 import { CATEGORIES, PLAN_STAGES, STATUSES } from "../planner";
 
 type Row=Record<string,unknown> & {id:string;owner_id:string;updated_at:string};
 const columns=["info",...FORMS.map(f=>f.column)];
 function decode(row:Row) {
-  const out={...row};
+  const out:Row={...row, stage:normalizeStage(row.stage), season:seasonForStage(String(row.stage))};
   for(const col of columns) out[col]=decryptColumn(row.id,col,row[col] as Record<string,string>);
   return out;
 }
@@ -22,8 +23,8 @@ function encryptedPatch(id:string, p:Patch, previous:Row|null) {
   if(p.info) out.info=encryptColumn(id,"info",previous?.info as Record<string,string>,p.info);
   for(const [col,v] of Object.entries(p.forms??{})) out[col]=encryptColumn(id,col,previous?.[col] as Record<string,string>,v);
   Object.assign(out,p.checks??{});
-  if(p.stage!==undefined) out.stage=p.stage;
-  if(p.season!==undefined) out.season=p.season;
+  try { Object.assign(out,pipelinePatch({stage:p.stage,season:p.season},String(previous?.stage || "RR"))); }
+  catch(e) { throw new BridgeError(400,e instanceof Error ? e.message : "客戶進度無效"); }
   return out;
 }
 function databaseError(error:unknown) { if(error) throw new BridgeError(503,"CRM 儲存服務出錯；未確認完成，請先查記錄，唔好重複提交"); }
@@ -47,7 +48,7 @@ export async function handleCommand(admin:SupabaseClient, identity:Identity, raw
   if(!profile?.active || profile.role!==identity.role || (profile.whatsapp && profile.whatsapp!==identity.phone)) throw new BridgeError(403,"帳戶已停用、角色改變或號碼綁定唔一致");
   if(c.action==="tasks_list"||c.action==="tasks_prepare"||c.action==="tasks_confirm"||c.action==="tasks_cancel"||c.action==="tasks_status") return handleTaskCommand(admin,identity,c);
   if(c.action==="whoami") return {name:profile.full_name,profile_id:identity.id,role:identity.role,scope:identity.role==="admin"?"team_clients":"own_clients"};
-  if(c.action==="schema") return {planner:{categories:CATEGORIES,stages:PLAN_STAGES,statuses:STATUSES,write_scope:"own_tasks",flow:"tasks_prepare → show preview → explicit confirmation → tasks_confirm",commands:{tasks_list:{required:["from","to"],optional:["owner_id"],date_format:"YYYY-MM-DD",max_days:31},tasks_prepare:{required:["tasks"],max_tasks:30,task_fields:["operation","day","category","stage","name","plan","status","result"],operations:["create","update"],update_matching:"Read tasks_list first; use original day/category/name/stage/plan. Only status and result change."},tasks_confirm:{required:["draft_id"],requires:"explicit confirmation after preview"},tasks_cancel:{required:["draft_id"]},tasks_status:{required:["draft_id"],saved:"true only after a database receipt exists"}}},info:INFO_KEYS,forms:FORMS.map(f=>({column:f.column,title:f.title,fields:f.sections.flatMap(s=>s.fields),keys:formFieldKeys(f)})),checks:CHECK_KEYS,actions:["tasks_status","tasks_list","tasks_prepare","tasks_confirm","tasks_cancel","whoami","schema","list","get","create","update","delete",...(identity.role==="admin"?["staff"]:[])]};
+  if(c.action==="schema") return {network_categories:SEASONS,planner:{categories:CATEGORIES,stages:PLAN_STAGES,statuses:STATUSES,write_scope:"own_tasks",flow:"tasks_prepare → show preview → explicit confirmation → tasks_confirm",commands:{tasks_list:{required:["from","to"],optional:["owner_id"],date_format:"YYYY-MM-DD",max_days:31},tasks_prepare:{required:["tasks"],max_tasks:30,task_fields:["operation","day","category","stage","name","plan","status","result"],operations:["create","update"],update_matching:"Read tasks_list first; use original day/category/name/stage/plan. Only status and result change."},tasks_confirm:{required:["draft_id"],requires:"explicit confirmation after preview"},tasks_cancel:{required:["draft_id"]},tasks_status:{required:["draft_id"],saved:"true only after a database receipt exists"}}},info:INFO_KEYS,forms:FORMS.map(f=>({column:f.column,title:f.title,fields:f.sections.flatMap(s=>s.fields),keys:formFieldKeys(f)})),checks:CHECK_KEYS,actions:["tasks_status","tasks_list","tasks_prepare","tasks_confirm","tasks_cancel","whoami","schema","list","get","create","update","delete",...(identity.role==="admin"?["staff"]:[])]};
   if(c.action==="staff") {
     if(identity.role!=="admin") throw new BridgeError(403,"只限主管");
     const {data,error}=await admin.from("profiles").select("id,full_name,role,active").order("full_name");databaseError(error);return {staff:data};
@@ -57,7 +58,7 @@ export async function handleCommand(admin:SupabaseClient, identity:Identity, raw
     let q=admin.from("clients").select("id,owner_id,info,stage,season,updated_at,ready_to_sign").order("id").range(c.offset,c.offset+49);
     if(identity.role!=="admin"||c.owner_id) q=q.eq("owner_id",owner(identity,c.owner_id));
     const {data,error}=await q;databaseError(error);
-    return {clients:(data??[]).map(r=>({...r,info:decryptColumn(r.id,"info",r.info)})),next_offset:data?.length===50?c.offset+50:null};
+    return {clients:(data??[]).map(r=>({...r,stage:normalizeStage(r.stage),season:seasonForStage(String(r.stage)),info:decryptColumn(r.id,"info",r.info)})),next_offset:data?.length===50?c.offset+50:null};
   }
   if(c.action==="get") return {client:decode(await load(admin,identity,c.id))};
   if(c.action!=="delete") validatePatch(c.patch,c.action==="create");

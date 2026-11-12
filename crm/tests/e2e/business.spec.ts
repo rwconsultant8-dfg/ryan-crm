@@ -40,8 +40,8 @@ async function drag(page: Page, cardText: string, targetStage: string) {
   await saved;
 }
 
-test.describe.serial("四季拖去已簽 ＋ 每月生意表", () => {
-  test("四季頁：煲緊嘅客拖去「已簽」→ 加入本月生意表", async ({ page }) => {
+test.describe.serial("人脈網拖去已簽 ＋ 每月生意表", () => {
+  test("人脈網：煲緊嘅客拖去「已簽」→ 加入本月生意表", async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await login(page, A);
     await page.goto("/clients/new");
@@ -93,7 +93,7 @@ test.describe.serial("四季拖去已簽 ＋ 每月生意表", () => {
     await expect(page.getByTestId("biz-AFYP")).toContainText("目標 $50,000");
   });
 
-  test("由「已簽」拖返出去 = 撤回，階段改返 PC", async ({ page }) => {
+  test("由「已簽」拖返出去 = 撤回，階段改返深化跟進", async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await login(page, A);
     await page.goto("/seasons");
@@ -102,7 +102,7 @@ test.describe.serial("四季拖去已簽 ＋ 每月生意表", () => {
     await page.reload();
     await expect(page.locator('[data-stage="AUTUMN"]')).toContainText(NAME);
     await page.getByTestId("client-card").filter({ hasText: NAME }).click();
-    await expect(page.getByLabel("階段")).toHaveValue("PC");
+    await expect(page.getByLabel("階段")).toHaveValue("FOLLOWUP");
   });
 
   test("員工 B 睇唔到；主管總覽同生意表唯讀", async ({ page }) => {

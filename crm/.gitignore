@@ -7,3 +7,6 @@ next-env.d.ts
 test-results/
 playwright-report/
 .deploy-output.json
+
+# Downloaded and checksum-verified by build
+/lib/assistant/assets/

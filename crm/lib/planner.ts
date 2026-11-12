@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { validTime } from "./followups";
 import { isDate } from "./weeks";
 
 export const CATEGORIES = { appointment: "邀約", planning: "計劃", review: "檢討", preparation: "準備", service: "客戶服務" } as const;
@@ -10,6 +11,9 @@ export const taskInputSchema = z.object({
   stage: z.enum(["", "relationship", "needs", "presentation", "closing", "recruitment"]),
   name: z.string().trim().min(1).max(120),
   plan: z.string().trim().min(1).max(1000),
+  client_id: z.union([z.string().uuid(), z.literal("")]).optional(),
+  time: z.string().refine(validTime, "時間無效").optional(),
+  period: z.enum(["", "morning", "noon", "afternoon", "evening"]).optional(),
 });
 export type TaskInput = z.infer<typeof taskInputSchema>;
 export type Task = TaskInput & { id: string; owner_id: string; status: keyof typeof STATUSES; result: string; updated_at: string };

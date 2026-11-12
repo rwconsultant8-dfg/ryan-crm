@@ -1,95 +1,48 @@
-// 四季紅簿：人脈分類（取代《四季紅簿 2026》嘅分類部分）
-
-export type Season = "SPRING" | "SUMMER" | "AUTUMN" | "WINTER";
+import { normalizeStage, storageStage, isStage, type Stage } from "./stages";
+// 人脈網沿用資料庫 enum，舊資料毋須遷移或刪除。
+export type Season = "SPRING" | "AUTUMN" | "SUMMER";
 export const NO_SEASON = "NONE";
 export type SeasonColumn = Season | typeof NO_SEASON;
-
 export type SeasonDef = {
   key: Season;
   label: string;
   emoji: string;
-  state: string; // 有心／有力
-  focus: string; // 行動方向
-  actions: string[]; // 對應行動清單（照《四季紅簿 2026》紙本）
+  state: string;
+  focus: string;
+  actions: string[];
 };
-
 export const SEASONS: SeasonDef[] = [
-  {
-    key: "SPRING",
-    label: "春",
-    emoji: "🌱",
-    state: "有力無心",
-    focus: "建立 ICIC 信任",
-    actions: [
-      "Fact Finding → Needs",
-      "賣人情（先付出後回報）",
-      "了解你的人品／Marketing 加 FB／IG",
-      "印象分",
-      "能力表現",
-      "共同話題",
-      "Case 分享",
-      "專業知識",
-      "Lifestyle",
-    ],
-  },
-  {
-    key: "SUMMER",
-    label: "夏",
-    emoji: "☀️",
-    state: "有心有力",
-    focus: "專注成交",
-    actions: [
-      "NR2 → PC",
-      "Confirm Appointment",
-      "Preparation（功課）",
-      "Drill",
-      "Case Study",
-      "狀態",
-      "具備所有簽單條件",
-    ],
-  },
-  {
-    key: "AUTUMN",
-    label: "秋",
-    emoji: "🍂",
-    state: "有心無力",
-    focus: "培養中心人物",
-    actions: [
-      "開發 N",
-      "重點培養深厚關係",
-      "Ask Referral",
-      "要求聽 Present（練習）",
-      "準備一分鐘 Script（Referral）",
-      "非必要事也多聯絡",
-      "教育銷售概念",
-      "認識身邊的人",
-      "共同興趣",
-    ],
-  },
-  {
-    key: "WINTER",
-    label: "冬",
-    emoji: "❄️",
-    state: "無心無力",
-    focus: "招募人才",
-    actions: [
-      "開 N 物色人才",
-      "分享 My Story 及公司",
-      "建立互動關係",
-      "發英雄帖",
-      "搵出搵錢動機",
-      "對現況不滿之處",
-      "對行業睇法",
-      "欣賞對方具備的條件",
-    ],
-  },
+  { key: "SPRING", label: "Fact Finding", emoji: "📋", state: "了解客戶", focus: "整理基本資料及客戶現況",
+    actions: ["了解客戶基本資料", "記錄家庭、工作同財務現況", "按已填資料核對 checklist"] },
+  { key: "AUTUMN", label: "Needs", emoji: "☑️", state: "釐清需要", focus: "保障和財富增值",
+    actions: ["了解客戶已表達嘅需要", "勾選相關產品類別", "記錄需要同下一步"] },
+  { key: "SUMMER", label: "Presentation", emoji: "🤝", state: "建立共識", focus: "令計劃書與客戶產生關聯",
+    actions: ["對應客戶需要同計劃內容", "記錄已達成嘅共識", "進行 Drill 講解練習"] },
 ];
-
 export const isSeason = (v: unknown): v is Season => SEASONS.some((s) => s.key === v);
+/** 舊冬季、未分類及新客戶先放相約見面；每張卡都有可見欄位。 */
+export const normalizeSeason = (v: unknown): Season => isSeason(v) ? v : "SPRING";
 export const seasonLabel = (s: string | null | undefined) => {
-  const d = SEASONS.find((x) => x.key === s);
-  return d ? `${d.emoji} ${d.label}` : "未分類";
+  const d = SEASONS.find((x) => x.key === normalizeSeason(s))!;
+  return `${d.emoji} ${d.label}`;
 };
-
-/** 四季頁嘅「已簽」欄：階段係已簽／已出單嘅客會喺呢欄 */
 export const SIGNED_ZONE = "SIGNED_ZONE";
+
+/** 人脈網與客戶進度共用同一跟進階段；原有細表格階段仍保留。 */
+export const seasonForStage = (stage: string): Season => normalizeStage(stage) === "FOLLOWUP" ? "AUTUMN" : ["PROPOSAL","SIGNED","ISSUED"].includes(normalizeStage(stage)) ? "SUMMER" : "SPRING";
+export const stageForSeason = (season: string | null): Stage => season === "AUTUMN" ? "FOLLOWUP" : season === "SUMMER" ? "PROPOSAL" : "MEETING";
+
+/** 所有寫入入口共用規則，防止同一客戶喺兩個看板出現互相矛盾嘅進度。 */
+export function pipelinePatch(change: {stage?: string; season?: string | null}, currentStage = "RR"): Record<string,string> {
+  const out:Record<string,string> = {};
+  if (change.stage && !isStage(change.stage) && !["RR","NR1","NR2","FNA","PC"].includes(change.stage)) throw new Error("客戶進度無效");
+  if (change.stage) { out.stage=storageStage(normalizeStage(change.stage)); out.season=seasonForStage(change.stage); }
+  if (change.season !== undefined) {
+    const phase=normalizeSeason(change.season), effective=change.stage || currentStage;
+    if (change.stage && seasonForStage(change.stage)!==phase) throw new Error("客戶階段同人脈分類不一致，請確認後再儲存。");
+    if ((effective==="SIGNED" || effective==="ISSUED") && phase!=="SUMMER") throw new Error("客戶已簽單／已出單；請先明確撤回已簽狀態。");
+    out.season=phase;
+    if (!change.stage && effective!=="SIGNED" && effective!=="ISSUED") out.stage=storageStage(stageForSeason(phase));
+  }
+  return out;
+}

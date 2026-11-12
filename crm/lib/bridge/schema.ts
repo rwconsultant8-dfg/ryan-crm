@@ -1,3 +1,5 @@
+import {normalizeAge} from "../age";
+import {isCustomerType} from "../customer-types";
 import { z } from "zod";
 import { INFO_KEYS, FORMS, CHECK_KEYS, formFieldKeys, GENDERS, MARITAL } from "../stages";
 import { BridgeError } from "./auth";
@@ -10,7 +12,7 @@ export const patchSchema = z.object({
   info: plain.optional(),
   forms: z.record(z.enum(["form_rr","form_nr1","form_nr2","form_fna","form_pc"]), plain).optional(),
   checks: z.record(z.string(), z.boolean()).optional(),
-  stage: z.enum(["RR","NR1","NR2","FNA","PC","SIGNED","ISSUED"]).optional(),
+  stage: z.enum(["MEETING","FOLLOWUP","PROPOSAL","SIGNED","ISSUED"]).optional(),
   season: z.enum(["SPRING","SUMMER","AUTUMN","WINTER"]).nullable().optional(),
 }).strict().refine(v => Object.keys(v).length > 0, "修改內容唔可以留空");
 export const commandSchema = z.discriminatedUnion("action", [
@@ -36,9 +38,10 @@ export function validatePatch(p:Patch, creating=false) {
   if(p.info) for(const [k,v] of Object.entries(p.info)) {
     if(!(INFO_KEYS as readonly string[]).includes(k)||v.length>200) bad();
     if(k==="name"&&!v.trim()) bad();
-    if(k==="age"&&v&&!/^\d{1,3}$/.test(v)) bad();
+    if(k==="age"&&normalizeAge(v)===null) bad();
     if(k==="gender"&&v&&!GENDERS.some(g=>g.value===v)) bad();
     if(k==="marital"&&v&&!MARITAL.some(m=>m.value===v)) bad();
+    if(k==="customer_type"&&!isCustomerType(v)) bad();
   }
   if(p.checks) for(const k of Object.keys(p.checks)) if(!(CHECK_KEYS as string[]).includes(k)) bad();
   if(p.forms) for(const [col,values] of Object.entries(p.forms)) {

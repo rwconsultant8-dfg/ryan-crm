@@ -1,0 +1,1 @@
+export type CoachingNote={id:string;clientId:string;ownerId:string;authorId:string;authorName:string;createdAt:string;request:string;dueDay:string;status:"open"|"replied"|"closed";reply:string;repliedAt?:string;revision:string|null};

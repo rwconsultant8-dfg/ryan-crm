@@ -1,4 +1,6 @@
 "use client";
+import {ageLabel} from "@/lib/age";
+import {customerTypeLabel} from "@/lib/customer-types";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -17,12 +19,13 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { moveSeasonAction, moveStageAction, unsignAction } from "@/app/(app)/clients/actions";
-import { GENDERS, PIPELINE_STAGES, isClosedStage, isPipelineStage, missingChecks, type Checks, type PipelineStage } from "@/lib/stages";
-import { NO_SEASON, SIGNED_ZONE, type SeasonColumn } from "@/lib/seasons";
+import { hkToday } from "@/lib/weeks";
+import { GENDERS, STAGES, boardStage, isClosedStage, isStage, missingChecks, stageLabel, type Checks, type Stage } from "@/lib/stages";
+import { NO_SEASON, SIGNED_ZONE, normalizeSeason, stageForSeason, type SeasonColumn } from "@/lib/seasons";
 
 export type BoardCard = {
   id: string;
-  stage: PipelineStage;
+  stage: Stage;
   season: SeasonColumn;
   ready: boolean;
   checks: Checks;
@@ -30,35 +33,36 @@ export type BoardCard = {
   age: string;
   gender: string;
   occupation: string;
+  customerType?: string;
+  ownerName?:string;
+  lastContact?: string;
+  next?: {day:string;time?:string;plan:string} | null;
 };
 
 const genderLabel = (g: string) => GENDERS.find((x) => x.value === g)?.label ?? "";
 
 function CardBody({ c }: { c: BoardCard }) {
-  const missing = missingChecks(c.checks);
-  const meta = [c.age && `${c.age}歲`, genderLabel(c.gender), c.occupation].filter(Boolean).join(" · ");
+  const meta = [c.age && ageLabel(c.age), genderLabel(c.gender), c.occupation].filter(Boolean).join(" · ");
   return (
     <>
       <div className="row">
-        <span className="name">{c.name || "（未命名）"}</span>
+        <span className="name">{c.name || "（未命名）"}</span>{c.customerType && <span className="badge badge-grey">{customerTypeLabel(c.customerType)}</span>}{c.ownerName&&<small className="compact-next">負責：{c.ownerName}</small>}
         <span className="spacer" />
-        {c.ready ? (
-          <span className="badge badge-green">✓ 具備簽單條件</span>
-        ) : (
-          <span className="badge badge-yellow">仲差 {missing.length} 格</span>
-        )}
+        {c.ready && !isClosedStage(c.stage) && <span className="badge badge-green">具備簽單條件</span>}
       </div>
       {meta && <div className="meta">{meta}</div>}
-      {!c.ready && missing.length <= 3 && (
-        <div className="missing">差：{missing.map((m) => `${m.stage}・${m.label}`).join("、")}</div>
-      )}
+      {c.next !== undefined && c.stage !== "SIGNED" && c.stage !== "ISSUED" && <div className={`next-step ${c.next ? "" : "not-planned"}`}>
+        <span className="small">{c.next ? `${c.next.day<hkToday() ? "已逾期 · " : ""}${c.next.day.slice(5)} ${c.next.time || ""}` : "未安排下一步"}</span>
+        {c.next && <strong>{c.next.plan}</strong>}
+      </div>}
+      {c.lastContact && <div className="meta">上次聯絡 {c.lastContact}</div>}
     </>
   );
 }
 
-// 精簡版（四季頁）：淨係人名；綠色＝具備簽單條件，詳情撳入去先睇
+// 人脈網精簡卡片：綠色＝具備簽單條件。
 function NameOnly({ c }: { c: BoardCard }) {
-  return <span className="name">{c.name || "（未命名）"}</span>;
+  return <><span className="name">{c.name || "（未命名）"}</span>{c.customerType && <span className="badge badge-grey">{customerTypeLabel(c.customerType)}</span>}{c.ready && !isClosedStage(c.stage) && <span className="badge badge-green">具備簽單條件</span>}{c.next !== undefined && c.stage!=="SIGNED" && c.stage!=="ISSUED" && <small className="compact-next">{c.next ? `${c.next.day<hkToday()?"逾期 · ":""}${c.next.day.slice(5)} · ${c.next.plan}` : "未安排"}</small>}</>;
 }
 
 function DraggableCard({ c, readOnly, compact }: { c: BoardCard; readOnly: boolean; compact: boolean }) {
@@ -77,10 +81,10 @@ function DraggableCard({ c, readOnly, compact }: { c: BoardCard; readOnly: boole
   );
 }
 
-function Column({ col, cards, readOnly, compact }: { col: BoardColumn; cards: BoardCard[]; readOnly: boolean; compact: boolean }) {
+function Column({ col, cards, readOnly, compact, mobileSelected }: { col: BoardColumn; cards: BoardCard[]; readOnly: boolean; compact: boolean; mobileSelected:boolean }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.key, disabled: readOnly });
   return (
-    <section ref={setNodeRef} className={`column${isOver ? " over" : ""}${col.done ? " column-done" : ""}`} data-stage={col.key}>
+    <section ref={setNodeRef} className={`column${mobileSelected ? " mobile-selected" : ""}${isOver ? " over" : ""}${col.done ? " column-done" : ""}`} data-stage={col.key}>
       <div className="column-head">
         <span>{col.label}</span>
         <span className="badge badge-grey">{cards.length}</span>
@@ -89,44 +93,61 @@ function Column({ col, cards, readOnly, compact }: { col: BoardColumn; cards: Bo
       {cards.map((c) => (
         <DraggableCard key={c.id} c={c} readOnly={readOnly} compact={compact} />
       ))}
-      {!compact && cards.length === 0 && <p className="muted small" style={{ padding: "0 6px" }}>（冇）</p>}
+      {cards.length === 0 && <p className="muted small" style={{ padding: "0 6px" }}>（冇）</p>}
     </section>
   );
 }
 
 export type BoardColumn = { key: string; label: string; hint?: string; done?: boolean };
 
-const STAGE_COLUMNS: BoardColumn[] = PIPELINE_STAGES.map((s) => ({
-  key: s.key,
-  label: s.label,
-  done: isClosedStage(s.key),
+function SignedClients({ cards, readOnly }: { cards: BoardCard[]; readOnly: boolean }) {
+  const { setNodeRef, isOver } = useDroppable({ id: SIGNED_ZONE, disabled: readOnly });
+  return (
+    <section ref={setNodeRef} className={`network-signed${isOver ? " over" : ""}`} data-stage={SIGNED_ZONE}>
+      <div className="row"><b>已簽客戶</b><span className="badge badge-grey">{cards.length}</span></div>
+      {!readOnly && <p className="small muted">簽單完成後拖到呢度；要撤回已簽，可以拖返上方分類。</p>}
+      {cards.map((c) => (
+        <div key={c.id} className="network-signed-client">
+          <DraggableCard c={c} readOnly={readOnly} compact />
+          {!readOnly && <Link className="small" href={`/business?add=${c.id}`}>加入本月生意表 →</Link>}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+const STAGE_COLUMNS: BoardColumn[] = STAGES.map((stage) => ({
+  key: stage.key, label: stage.label, done: isClosedStage(stage.key),
 }));
 
-/** 看板：groupBy="stage" 按階段（預設），groupBy="season" 按四季 */
+/** 看板：groupBy="stage" 按階段，groupBy="season" 顯示人脈網三欄。 */
 export default function Board({
   cards: initial,
   readOnly = false,
   groupBy = "stage",
   columns = STAGE_COLUMNS,
   compact = false,
+  simple = false,
 }: {
   cards: BoardCard[];
   readOnly?: boolean;
   groupBy?: "stage" | "season";
   columns?: BoardColumn[];
-  /** true = 淨係顯示人名，格仔排成 2×2（手機一版睇晒） */
+  /** true = 人名卡片，以三欄並排顯示 */
   compact?: boolean;
+  simple?: boolean;
 }) {
   const router = useRouter();
   const [cards, setCards] = useState(initial);
+  const [mobileColumn,setMobileColumn]=useState(columns.find(col=>initial.some(c=>(groupBy==="stage"?boardStage(c.stage):normalizeSeason(c.season))===col.key))?.key || columns[0]?.key || "");
   useEffect(() => setCards(initial), [initial]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; href?: string; link?: string } | null>(null);
   const [, startTransition] = useTransition();
 
-  // 四季頁：Closing 同 Referral 嘅客放喺 Closing 欄
-  const colOf = (c: BoardCard): string => (groupBy === "stage" ? c.stage : isClosedStage(c.stage) ? SIGNED_ZONE : c.season);
+  const isSigned = (c: BoardCard) => isClosedStage(c.stage);
+  const colOf = (c: BoardCard): string => (groupBy === "stage" ? boardStage(c.stage) : isSigned(c) ? SIGNED_ZONE : normalizeSeason(c.season));
 
   // 滑鼠拖 6px 先算拖；手機長按 250ms 先開始拖，避免同捲動打交
   const sensors = useSensors(
@@ -149,30 +170,29 @@ export default function Board({
       }
     });
 
-  const confirmNotReady = (card: BoardCard, label: string) =>
-    card.ready ||
-    window.confirm(`「${card.name}」仲差 ${missingChecks(card.checks).length} 格先具備簽單條件，確定移去「${label}」？`);
-
   const onDragEnd = (e: DragEndEvent) => {
     setActiveId(null);
     const id = String(e.active.id);
     const to = e.over ? String(e.over.id) : undefined;
     const card = cards.find((c) => c.id === id);
-    if (!card || !to || colOf(card) === to) return;
+    if (readOnly || !card || !to || colOf(card) === to) return;
     const prev = cards;
     setError(null);
     setNotice(null);
 
+    const confirmClosing = (stage: Stage) =>
+      card.ready || isClosedStage(card.stage) || window.confirm(
+        `「${card.name}」仲有 ${missingChecks(card.checks).length} 項簽單條件未完成。確定轉去 ${stageLabel(stage)}？`,
+      );
     if (groupBy === "stage") {
-      if (!isPipelineStage(to)) return;
-      if (isClosedStage(to) && !confirmNotReady(card, PIPELINE_STAGES.find((s) => s.key === to)?.label ?? to)) return;
+      if (!isStage(to) || (isClosedStage(to) && !confirmClosing(to))) return;
       setCards((cs) => cs.map((c) => (c.id === id ? { ...c, stage: to } : c)));
       return run(prev, () => moveStageAction(id, to));
     }
 
-    // 四季頁：拖去「已簽」= 簽咗單
+    // 已簽客戶獨立放喺三欄下面。
     if (to === SIGNED_ZONE) {
-      if (!confirmNotReady(card, "Closing")) return;
+      if (!confirmClosing("SIGNED")) return;
       setCards((cs) => cs.map((c) => (c.id === id ? { ...c, stage: "SIGNED" } : c)));
       return run(
         prev,
@@ -182,13 +202,13 @@ export default function Board({
     }
 
     // 由「已簽」拖返出去 = 撤回已簽（階段改返 PC）
-    if (isClosedStage(card.stage)) {
-      if (!window.confirm(`撤回「${card.name}」嘅已簽狀態？階段會改返做 Presentation。`)) return;
-      setCards((cs) => cs.map((c) => (c.id === id ? { ...c, stage: "PC", season: to as SeasonColumn } : c)));
+    if (isSigned(card)) {
+      if (!window.confirm(`撤回「${card.name}」嘅已簽狀態？階段會改到對應嘅跟進分類。`)) return;
+      setCards((cs) => cs.map((c) => (c.id === id ? { ...c, stage: stageForSeason(to) as Stage, season: to as SeasonColumn } : c)));
       return run(prev, () => unsignAction(id, to === NO_SEASON ? null : to));
     }
 
-    setCards((cs) => cs.map((c) => (c.id === id ? { ...c, season: to as SeasonColumn } : c)));
+    setCards((cs) => cs.map((c) => (c.id === id ? { ...c, season: to as SeasonColumn, stage: stageForSeason(to) as Stage } : c)));
     run(prev, () => moveSeasonAction(id, to === NO_SEASON ? null : to));
   };
 
@@ -203,16 +223,18 @@ export default function Board({
           {notice.href && <Link href={notice.href}>{notice.link}</Link>}
         </p>
       )}
+      <label className="board-mobile-filter field"><span>{groupBy==="stage"?"按客戶進度查看":"按人脈分類查看"}</span><select aria-label="選擇客戶分類" value={mobileColumn} onChange={e=>setMobileColumn(e.target.value)}>{columns.map(col=><option key={col.key} value={col.key}>{col.label} · {cards.filter(c=>colOf(c)===col.key).length} 位</option>)}</select></label>
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setActiveId(null)}>
         <div className={compact ? "board board-compact" : "board"}>
           {columns.map((col) => (
-            <Column key={col.key} col={col} cards={cards.filter((c) => colOf(c) === col.key)} readOnly={readOnly} compact={compact} />
+            <Column key={col.key} col={col} cards={cards.filter((c) => colOf(c) === col.key).sort((a,b)=>(a.next?.day || "9999").localeCompare(b.next?.day || "9999"))} readOnly={readOnly} compact={compact || simple} mobileSelected={col.key===mobileColumn} />
           ))}
         </div>
+        {groupBy === "season" && <SignedClients cards={cards.filter(isSigned)} readOnly={readOnly} />}
         <DragOverlay>
           {active ? (
-            <div className={`client-card drag-overlay${compact ? " compact" : ""}${active.ready ? " ready" : ""}`}>
-              {compact ? <NameOnly c={active} /> : <CardBody c={active} />}
+            <div className={`client-card drag-overlay${compact || simple ? " compact" : ""}${active.ready ? " ready" : ""}`}>
+              {compact || simple ? <NameOnly c={active} /> : <CardBody c={active} />}
             </div>
           ) : null}
         </DragOverlay>

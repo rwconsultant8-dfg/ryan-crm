@@ -5,7 +5,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return (
     <div className="login-wrap">
       <div className="card">
-        <h1>跟客系統</h1>
+        <h1>ZEST</h1>
         <p className="muted small">只限團隊成員使用。帳戶由主管開設。</p>
         <LoginForm initialError={error === "inactive" ? "帳戶已停用，請聯絡主管" : undefined} />
       </div>

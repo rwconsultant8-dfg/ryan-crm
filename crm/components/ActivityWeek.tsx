@@ -1,309 +1,64 @@
 "use client";
-
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { saveActivityWeekAction } from "@/app/(app)/activity/actions";
-import {
-  ACTIVITIES,
-  APPT_SLOTS,
-  KPI_LABEL,
-  PERFECT_TOTAL,
-  kpiOf,
-  pointsByActivity,
-  sumCounts,
-  totalPoints,
-  type ActivityKey,
-  type Counts,
-} from "@/lib/activity";
+import {isCalendarTask} from "@/lib/calendar-tasks";
+import { APPT_SLOTS, appointmentSlot, appointmentTimeLabel } from "@/lib/activity";
+import { appointmentClientKey, appointmentTimeKey, type ClientOption } from "@/lib/followups";
+import type { Task } from "@/lib/planner";
 import { WEEKDAY_LABELS, shortDate } from "@/lib/weeks";
 
-export type WeekDay = { day: string; counts: Counts; appts: Record<string, string> };
-
-const KPI_CLASS = { green: "badge-green", yellow: "badge-yellow", red: "badge-red" } as const;
-
-export function KpiBadge({ total }: { total: number }) {
-  const k = kpiOf(total);
-  return (
-    <span className={`badge ${KPI_CLASS[k]}`} data-testid="kpi">
-      {total} 分 · {KPI_LABEL[k]}
-    </span>
-  );
-}
-
-function Stepper({
-  value,
-  onChange,
-  disabled,
-  label,
-  compact,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-  disabled: boolean;
-  label: string;
-  compact?: boolean;
+export type WeekDay = { day:string; appts:Record<string,string> };
+function AppointmentCell({ day, slot, clients, disabled, readOnly, initialClient, tasks, ownerQuery, edit }: {
+  day:WeekDay; slot:typeof APPT_SLOTS[number]; clients:ClientOption[]; disabled:boolean; readOnly:boolean; initialClient:string; tasks:Task[]; ownerQuery:string;
+  edit:(key:string,value:string)=>void;
 }) {
-  const set = (v: number) => onChange(Math.max(0, Math.min(99, v)));
-  if (compact)
-    return (
-      <input
-        className={`num-cell${value > 0 ? " has" : ""}`}
-        type="text"
-        inputMode="numeric"
-        aria-label={label}
-        value={value === 0 ? "" : value}
-        placeholder="0"
-        disabled={disabled}
-        onFocus={(e) => e.target.select()}
-        onChange={(e) => set(parseInt(e.target.value.replace(/\D/g, "") || "0", 10))}
-      />
-    );
-  return (
-    <div className="stepper">
-      <button type="button" disabled={disabled || value <= 0} onClick={() => set(value - 1)} aria-label={`${label} 減一`}>
-        −
-      </button>
-      <input
-        type="text"
-        inputMode="numeric"
-        aria-label={label}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => {
-          const n = parseInt(e.target.value.replace(/\D/g, "") || "0", 10);
-          set(n);
-        }}
-      />
-      <button type="button" disabled={disabled || value >= 99} onClick={() => set(value + 1)} aria-label={`${label} 加一`}>
-        ＋
-      </button>
-    </div>
-  );
+  const key = appointmentClientKey(slot.key), timeKey = appointmentTimeKey(slot.key);
+  const selected = day.appts[key] || "";
+  const client = clients.find(c=>c.id===selected);
+  const text = day.appts[slot.key] || "";
+  const time = day.appts[timeKey] || "";
+  return <article className={`calendar-cell ${text || selected || tasks.length ? "has-appointment" : ""}`}>
+    <div className="row"><span className="slot-symbol" aria-hidden="true">{slot.key==="breakfast" ? "☀" : slot.key==="dinner" ? "☾" : "◌"}</span><strong>{slot.label}</strong><span className="spacer"/><small className="muted">{time || slot.time}</small></div>
+    {(text || selected) && <div className="appointment-summary">{client && <Link href={`/clients/${client.id}`}>{client.name || "未命名客戶"} ↗</Link>}<p>{text}</p></div>}
+    {tasks.map(t=><article className="calendar-task" key={t.id}><span className="badge badge-grey">見面{t.status==="done" ? " · 已完成" : ""}</span><strong>{appointmentTimeLabel(t.time,t.period)} · {t.client_id ? <Link href={`/clients/${t.client_id}`}>{t.name} ↗</Link> : t.name}</strong><p>{t.plan}</p><Link href={`/today?week=${day.day}${ownerQuery}`}>查看安排 →</Link></article>)}
+    {!readOnly && <details><summary>{text || selected ? "編輯安排" : "＋ 安排 appointment"}</summary>
+      <label className="field"><span>連結客戶</span><select aria-label={`${day.day} ${slot.label}客戶`} disabled={disabled} value={selected} onChange={e=>edit(key,e.target.value)}><option value="">暫不連結</option>{clients.map(c=><option value={c.id} key={c.id}>{c.name || "未命名客戶"}</option>)}</select></label>
+      {initialClient && !selected && <button className="btn btn-sm" disabled={disabled} onClick={()=>edit(key,initialClient)}>揀返剛才嘅客戶</button>}
+      <label className="field"><span>時間</span><input aria-label={`${day.day} ${slot.label}時間`} type="time" disabled={disabled} value={time} onChange={e=>edit(timeKey,e.target.value)}/></label>
+      <label className="field"><span>地點／內容</span><textarea aria-label={`${day.day} ${slot.label} appointment`} disabled={disabled} maxLength={300} value={text} placeholder="記低地點同見面重點" onChange={e=>edit(slot.key,e.target.value)}/></label>
+    </details>}
+    {readOnly && !text && !selected && !tasks.length && <p className="muted small">未有安排</p>}
+  </article>;
 }
-
-export default function ActivityWeek({ days: initial, today, readOnly }: { days: WeekDay[]; today: string; readOnly: boolean }) {
-  const router = useRouter();
-  const [days, setDays] = useState(initial);
-  const [dirty, setDirty] = useState<Set<string>>(new Set());
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [pending, start] = useTransition();
-  const todayIdx = initial.findIndex((d) => d.day === today);
-  const [active, setActive] = useState(todayIdx >= 0 ? todayIdx : 0);
-
-  useEffect(() => {
-    setDays(initial);
-    setDirty(new Set());
-  }, [initial]);
-
-  useEffect(() => {
-    if (dirty.size === 0) return;
-    const h = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener("beforeunload", h);
-    return () => window.removeEventListener("beforeunload", h);
-  }, [dirty]);
-
-  const weekCounts = useMemo(() => sumCounts(days.map((d) => d.counts)), [days]);
-  const weekPoints = pointsByActivity(weekCounts);
-  const weekTotal = totalPoints(weekCounts);
-
-  const setCount = (i: number, k: ActivityKey, v: number) => {
-    setDays((ds) => ds.map((d, j) => (j === i ? { ...d, counts: { ...d.counts, [k]: v } } : d)));
-    setDirty((s) => new Set(s).add(days[i].day));
-    setMsg(null);
-  };
-  const setAppt = (i: number, k: string, v: string) => {
-    setDays((ds) => ds.map((d, j) => (j === i ? { ...d, appts: { ...d.appts, [k]: v } } : d)));
-    setDirty((s) => new Set(s).add(days[i].day));
-    setMsg(null);
-  };
-
-  const save = () =>
-    start(async () => {
-      const changed = days.filter((d) => dirty.has(d.day));
-      const res = await saveActivityWeekAction(days[0].day, changed);
-      if (res.ok) {
-        setDirty(new Set());
-        setMsg({ ok: true, text: "已儲存" });
-        router.refresh();
-      } else {
-        setMsg({ ok: false, text: res.error });
-      }
-    });
-
-  const dayHead = (d: WeekDay, i: number) => (
-    <>
-      {WEEKDAY_LABELS[i]}
-      <span className="muted small">（{shortDate(d.day)}）</span>
-      {dirty.has(d.day) && <span className="dot" title="未儲存" />}
-    </>
-  );
-
-  return (
-    <div>
-      {/* 本週總結 */}
-      <div className="week-summary" data-testid="week-summary">
-        <div className="wk-total">
-          <div className="muted small">本週總分</div>
-          <div className="wk-total-num">
-            {weekTotal}
-            <span className="muted"> ／{PERFECT_TOTAL}</span>
-          </div>
-          <KpiBadge total={weekTotal} />
-          <div className="muted small" style={{ marginTop: 6 }}>綠 70+ · 黃 40–69 · 紅 0–39</div>
-        </div>
-        {ACTIVITIES.map((a) => {
-          const pct = Math.min(100, (weekPoints[a.key] / a.perfect) * 100);
-          return (
-            <div className="wk-tile" key={a.key}>
-              <div className="row">
-                <b>{a.code}</b>
-                <span className="spacer" />
-                <span className="small">
-                  <b>{weekPoints[a.key]}</b>
-                  <span className="muted">／{a.perfect} 分</span>
-                </span>
-              </div>
-              <div className="muted small wk-label">
-                {a.label} · 每次 {a.points} 分 · 本週 {weekCounts[a.key]} 次
-              </div>
-              <div className="progress">
-                <div style={{ width: `${pct}%` }} className={pct >= 100 ? "full" : undefined} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* 電腦：一週表格 */}
-      <div className="table-wrap week-grid">
-        <table>
-          <thead>
-            <tr>
-              <th></th>
-              {days.map((d, i) => (
-                <th key={d.day} className={`num${d.day === today ? " today" : ""}`}>
-                  {dayHead(d, i)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {APPT_SLOTS.map((s) => (
-              <tr key={s.key}>
-                <td>
-                  {s.label}
-                  <div className="muted small">{s.time}</div>
-                </td>
-                {days.map((d, i) => (
-                  <td key={d.day} className={d.day === today ? "today" : undefined}>
-                    <input
-                      type="text"
-                      className="appt"
-                      aria-label={`${WEEKDAY_LABELS[i]} ${s.label}約會`}
-                      value={d.appts[s.key] ?? ""}
-                      disabled={readOnly}
-                      maxLength={300}
-                      onChange={(e) => setAppt(i, s.key, e.target.value)}
-                    />
-                  </td>
-                ))}
-              </tr>
-            ))}
-            {ACTIVITIES.map((a) => (
-              <tr key={a.key}>
-                <td>
-                  <b>{a.code}</b> <span className="muted small">×{a.points}</span>
-                </td>
-                {days.map((d, i) => (
-                  <td key={d.day} className={`num${d.day === today ? " today" : ""}`}>
-                    <Stepper
-                      compact
-                      value={d.counts[a.key]}
-                      disabled={readOnly}
-                      label={`${WEEKDAY_LABELS[i]} ${a.code}`}
-                      onChange={(v) => setCount(i, a.key, v)}
-                    />
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td>每日總分</td>
-              {days.map((d) => (
-                <td key={d.day} className={`num${d.day === today ? " today" : ""}`}>
-                  {totalPoints(d.counts)}
-                </td>
-              ))}
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-
-      {/* 手機：逐日 */}
-      <div className="week-cards">
-        <div className="tabs" role="tablist">
-          {days.map((d, i) => (
-            <button
-              key={d.day}
-              role="tab"
-              aria-selected={active === i}
-              className={`tab${active === i ? " active" : ""}`}
-              onClick={() => setActive(i)}
-            >
-              {WEEKDAY_LABELS[i].replace("星期", "")}
-              <span className="muted small"> {shortDate(d.day)}</span>
-              {dirty.has(d.day) && <span className="dot" />}
-            </button>
-          ))}
-        </div>
-        {(() => {
-          const d = days[active];
-          const i = active;
-          return (
-            <div className="card">
-              <div className="row" style={{ marginBottom: 8 }}>
-                <b>{dayHead(d, i)}</b>
-                <span className="spacer" />
-                <span className="badge badge-grey">當日 {totalPoints(d.counts)} 分</span>
-              </div>
-              {ACTIVITIES.map((a) => (
-                <div className="act-row" key={a.key}>
-                  <div>
-                    <b>{a.code}</b> <span className="muted small">{a.label}（{a.points} 分）</span>
-                  </div>
-                  <Stepper value={d.counts[a.key]} disabled={readOnly} label={`${a.code}（手機）`} onChange={(v) => setCount(i, a.key, v)} />
-                </div>
-              ))}
-              {APPT_SLOTS.map((s) => (
-                <label className="field" key={s.key} style={{ marginTop: 10 }}>
-                  <span>
-                    {s.label}約會 <span className="muted small">{s.time}</span>
-                  </span>
-                  <input
-                    type="text"
-                    value={d.appts[s.key] ?? ""}
-                    disabled={readOnly}
-                    maxLength={300}
-                    onChange={(e) => setAppt(i, s.key, e.target.value)}
-                  />
-                </label>
-              ))}
-            </div>
-          );
-        })()}
-      </div>
-
-      {!readOnly && (
-        <div className="savebar">
-          <button className="btn btn-primary" onClick={save} disabled={pending || dirty.size === 0}>
-            {pending ? "儲存中…" : "儲存"}
-          </button>
-          {dirty.size > 0 && <span className="muted small">{dirty.size} 日未儲存</span>}
-          {msg && <span className={msg.ok ? "notice" : "error"}>{msg.text}</span>}
-        </div>
-      )}
-    </div>
-  );
+export default function ActivityWeek({days:initial,today,readOnly,clients=[],tasks=[],initialClient="",ownerQuery=""}:{
+  days:WeekDay[];today:string;readOnly:boolean;clients?:ClientOption[];tasks?:Task[];initialClient?:string;ownerQuery?:string;
+}) {
+  const router=useRouter();
+  const [days,setDays]=useState(initial),[dirty,setDirty]=useState<Set<string>>(new Set());
+  const [message,setMessage]=useState<{ok:boolean;text:string}|null>(null),[pending,start]=useTransition();
+  const [active,setActive]=useState(Math.max(0,initial.findIndex(d=>d.day===today)));
+  useEffect(()=>{setDays(initial);setDirty(new Set());},[initial]);
+  useEffect(()=>{if(!dirty.size)return;const guard=(e:BeforeUnloadEvent)=>e.preventDefault();window.addEventListener("beforeunload",guard);return()=>window.removeEventListener("beforeunload",guard);},[dirty]);
+  function edit(i:number,key:string,value:string){
+    setDays(ds=>ds.map((d,j)=>i===j?{...d,appts:{...d.appts,[key]:value}}:d));
+    setDirty(d=>new Set(d).add(days[i].day));setMessage(null);
+  }
+  function save(){start(async()=>{
+    try {const result=await saveActivityWeekAction(days[0].day,days.filter(d=>dirty.has(d.day)));
+      setMessage(result.ok?{ok:true,text:"日曆已儲存，客戶頁會同步顯示。"}:{ok:false,text:result.error});
+      if(result.ok){setDirty(new Set());router.refresh();}
+    } catch {setMessage({ok:false,text:"未能儲存，請重試。"});}
+  });}
+  return <>
+    <p className="muted">上午、中午、下午、晚上。講明時間或時段嘅見面安排會自動放入對應位置，並同步顯示喺客戶頁。</p>
+    <div className="calendar-mobile-days" role="group" aria-label="選擇日曆日期">{days.map((d,i)=><button className={`btn ${active===i ? "btn-primary" : ""}`} key={d.day} aria-pressed={active===i} onClick={()=>setActive(i)}>{WEEKDAY_LABELS[i].replace("星期","")}<small>{shortDate(d.day)}</small></button>)}</div>
+    <div className="calendar-week" aria-label="每週日曆">{days.map((d,i)=><section key={d.day} className={`calendar-day ${active===i?"selected-day":""} ${d.day===today?"is-today":""}`}>
+      <header><span>{WEEKDAY_LABELS[i]}{d.day===today && " · 今日"}</span><strong>{shortDate(d.day)}</strong>{dirty.has(d.day)&&<span className="badge badge-yellow">未儲存</span>}</header>
+      {APPT_SLOTS.map(s=><AppointmentCell key={s.key} day={d} slot={s} clients={clients} disabled={readOnly||pending} readOnly={readOnly} initialClient={initialClient} ownerQuery={ownerQuery} tasks={tasks.filter(t=>t.day===d.day && isCalendarTask(t) && appointmentSlot(t.time,t.period)===s.key)} edit={(key,value)=>edit(i,key,value)}/>)}
+      {tasks.filter(t=>t.day===d.day && isCalendarTask(t) && !appointmentSlot(t.time,t.period)).map(t=><article className="calendar-task" key={t.id}><span className="badge badge-grey">見面{t.status==="done" ? " · 已完成" : ""}</span><strong>{appointmentTimeLabel(t.time,t.period) || "時間待定"} · {t.name}</strong><p>{t.plan}</p><Link href={`/today?week=${days[0].day}${ownerQuery}`}>查看任務 →</Link></article>)}
+    </section>)}</div>
+    {!readOnly && <div className="savebar"><button className="btn btn-primary" onClick={save} disabled={pending||!dirty.size}>{pending?"儲存中…":"儲存日曆"}</button>{dirty.size>0&&<span className="small muted">{dirty.size} 日有變更</span>}{message&&<span role={message.ok?"status":"alert"} className={message.ok?"notice":"error"}>{message.text}</span>}</div>}
+  </>;
 }

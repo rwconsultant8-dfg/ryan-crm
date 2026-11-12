@@ -1,102 +1,140 @@
 "use client";
+import {ageLabel} from "@/lib/age";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
-import { deleteClientAction, moveSeasonAction, moveStageAction, saveFormAction, type ActionResult } from "@/app/(app)/clients/actions";
+import { useEffect, useState, useTransition } from "react";
+import { deleteClientAction, moveStageAction, saveFactFindingAction, saveFormAction, type ActionResult } from "@/app/(app)/clients/actions";
 import InfoFields from "./InfoFields";
-import { NO_SEASON, SEASONS, type SeasonColumn } from "@/lib/seasons";
+import { CLIENT_FORMS, factFindingChecklist, historicalFormEntries, pointFormLines } from "@/lib/client-forms";
+import { type SeasonColumn } from "@/lib/seasons";
 import {
-  FOLLOW_UPS,
-  CLIENT_FORMS,
-  INFO_KEYS,
-  INFO_LABELS,
   GENDERS,
   MARITAL,
-  MEETING_TIPS,
-  formFieldKeys,
-  PIPELINE_STAGES,
+  RR_CHECKS,
+  NR2_CHECKS,
   isClosedStage,
   missingChecks,
   proposalUrl,
   stageLabel,
   type CheckKey,
+  formFieldKeys,
+  STAGES,
   type Checks,
-  type Field,
-  type ClientFormColumn,
-  type ClientFormDef,
-  type FollowUp,
-  type PipelineStage,
+  type FormColumn,
+  type Stage,
 } from "@/lib/stages";
 
-type Info = { name: string; age: string; gender: string; occupation: string; marital: string };
+type Info = { name: string; age: string; gender: string; occupation: string; marital: string; customer_type?: string };
 
 export type EditorClient = {
   id: string;
-  stage: PipelineStage;
+  stage: Stage;
   season: SeasonColumn;
   info: Info;
   checks: Checks;
-  forms: Record<ClientFormColumn, Record<string, string>>;
+  forms: Record<FormColumn, Record<string, string>>;
 };
 
-type Tab = ClientFormColumn | FollowUp;
-type EditableSection = Tab | "info";
+type DirtyKey = "info" | "checks" | FormColumn;
 
-function FieldInput({
-  f,
-  value,
-  onChange,
-  disabled,
-}: {
-  f: Field;
-  value: string;
-  onChange: (v: string) => void;
-  disabled: boolean;
+export function ClientStageForm({ phase, forms, info = {}, readOnly, onChange }: {
+  phase: Stage;
+  forms: EditorClient["forms"];
+  info?: Record<string, string | undefined>;
+  readOnly: boolean;
+  onChange: (column: FormColumn, key: string, value: string) => void;
 }) {
-  if (f.type === "rating") {
-    return (
-      <div className="rating" role="radiogroup" aria-label={f.label}>
-        {Array.from({ length: 10 }, (_, i) => String(i + 1)).map((n) => (
-          <button
-            type="button"
-            key={n}
-            className={value === n ? "on" : undefined}
-            disabled={disabled}
-            aria-pressed={value === n}
-            onClick={() => onChange(value === n ? "" : n)}
-          >
-            {n}
-          </button>
-        ))}
-      </div>
-    );
-  }
-  if (f.type === "checkbox") {
-    return <input type="checkbox" checked={value === "true"} disabled={disabled} onChange={(e) => onChange(e.target.checked ? "true" : "")} />;
-  }
-  if (f.type === "text" || f.type === "number" || f.type === "date" || f.type === "url") {
-    return (
-      <input
-        type={f.type === "number" ? "text" : f.type}
-        inputMode={f.type === "number" ? "decimal" : undefined}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    );
-  }
-  return <textarea rows={2} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />;
+  const history = historicalFormEntries(phase, forms);
+  const checklist = phase === "MEETING" ? factFindingChecklist(info, forms) : [];
+  return (
+    <>
+      {phase === "MEETING" && (
+        <section className="client-fact-checklist" aria-label="Fact Finding 資料 checklist">
+          <h2>資料 checklist</h2>
+          <p className="muted small">已填資料會自動打 tick。</p>
+          <ul className="client-check-grid">
+            {checklist.map((item) => (
+              <li key={item.key} className={item.complete ? "complete" : ""}>
+                <span aria-hidden="true">{item.complete ? "☑️" : "☐"}</span>
+                <span>{item.label}<span className="sr-only">：{item.complete ? "已有資料" : "未填資料"}</span></span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {CLIENT_FORMS.filter((def) => def.phase === phase).map((def) => (
+        <section key={def.column} className="client-form-group">
+          <h2 style={{ marginTop: 0 }}>{def.title}</h2>
+          <p className="muted small">{def.timing}</p>
+          {def.sections.map((section, index) => (
+            <fieldset key={index} className={`client-simple-fields client-fieldset${section.fields.every((field) => field.type === "checkbox") ? " client-product-options" : ""}`}>
+              {section.title && <legend>{section.title}</legend>}
+              {section.note && <p className="muted small">{section.note}</p>}
+              {section.fields.map((field) => (
+                field.type === "checkbox" ? (
+                  <label className="client-product-option" key={field.key}>
+                    <input type="checkbox" checked={forms[def.column]?.[field.key] === "true"} disabled={readOnly}
+                      onChange={(event) => onChange(def.column, field.key, event.target.checked ? "true" : "")} />
+                    <span>{field.label}</span>
+                  </label>
+                ) : <div className="field" key={field.key}>
+                <label htmlFor={`client-${def.column}-${field.key}`}>
+                  <span>{field.label}</span>
+                </label>
+                  {field.hint && <p className="muted small" id={`client-hint-${field.key}`}>{field.hint}</p>}
+                  {field.type === "url" ? (
+                    <input type="url" id={`client-${def.column}-${field.key}`}
+                      maxLength={5000} value={forms[def.column]?.[field.key] ?? ""}
+                      disabled={readOnly} onChange={(event) => onChange(def.column, field.key, event.target.value)} />
+                  ) : <textarea
+                    id={`client-${def.column}-${field.key}`}
+                    aria-describedby={field.hint ? `client-hint-${field.key}` : undefined}
+                    rows={field.type === "points" ? 6 : field.key === "notes" ? 8 : 3}
+                    placeholder={field.type === "points" ? "每行一項留意事項" : undefined}
+                    maxLength={5000}
+                    value={forms[def.column]?.[field.key] ?? ""}
+                    disabled={readOnly}
+                    onChange={(event) => onChange(def.column, field.key, event.target.value)}
+                  />}
+                  {field.type === "url" && proposalUrl(forms[def.column]?.[field.key] ?? "") && (
+                    <a href={proposalUrl(forms[def.column][field.key])} target="_blank" rel="noopener noreferrer">開啟計劃書</a>
+                  )}
+                  {field.type === "points" && pointFormLines(forms[def.column]?.[field.key] ?? "").length > 0 && (
+                    <ul className="client-point-list" aria-label={`${field.label}逐點顯示`}>
+                      {pointFormLines(forms[def.column]?.[field.key] ?? "").map((line, lineIndex) => <li key={lineIndex}>{line}</li>)}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </fieldset>
+          ))}
+        </section>
+      ))}
+      {history.length > 0 && (
+        <details className="history">
+          <summary>過往記錄（{history.length}）</summary>
+          <dl className="client-form-history">
+            {history.map((entry) => (
+              <div key={entry.key}>
+                <dt className="muted small">{entry.label}</dt>
+                <dd>{entry.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      )}
+    </>
+  );
 }
 
 export default function ClientEditor({ client, readOnly }: { client: EditorClient; readOnly: boolean }) {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>("form_rr");
+  const [tab, setTab] = useState<Stage>("MEETING");
   const [info, setInfo] = useState<Info>(client.info);
   const [forms, setForms] = useState(client.forms);
-  const [checks, setChecks] = useState<Checks>(client.checks);
-  const [stage, setStage] = useState<PipelineStage>(client.stage);
-  const [season, setSeason] = useState<SeasonColumn>(client.season);
-  const [dirty, setDirty] = useState<Set<EditableSection>>(new Set());
+  const [checks, setChecks] = useState(client.checks);
+  const [stage, setStage] = useState<Stage>(client.stage);
+  const [dirty, setDirty] = useState<Map<DirtyKey, Set<string>>>(new Map());
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -108,11 +146,11 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
     return () => window.removeEventListener("beforeunload", h);
   }, [dirty]);
 
-  const markDirty = (t: EditableSection) => setDirty((d) => new Set(d).add(t));
-  const missing = useMemo(() => missingChecks(checks), [checks]);
-  const ready = missing.length === 0;
-  const checksDirty = dirty.has("form_rr") || dirty.has("form_nr2");
-
+  const markDirty = (t: DirtyKey, key: string) => setDirty((d) => {
+    const next = new Map(d);
+    next.set(t, new Set(d.get(t)).add(key));
+    return next;
+  });
   const run = (fn: () => Promise<ActionResult>, onOk?: () => void) => {
     setMsg(null);
     startTransition(async () => {
@@ -127,29 +165,57 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
     });
   };
 
-  const activeFollowUp = FOLLOW_UPS.find((item) => item.key === tab)?.key;
-  const activeForm = CLIENT_FORMS.find((f) => f.column === (activeFollowUp ? "form_pc" : tab))!;
-  const infoDirty = tab === "form_rr" && dirty.has("info");
+  const clearDirty = (t: DirtyKey, keys?: string[]) =>
+    setDirty((d) => {
+      const n = new Map(d);
+      if (keys) {
+        const remaining = new Set(d.get(t));
+        for (const key of keys) remaining.delete(key);
+        if (remaining.size) n.set(t, remaining);
+        else n.delete(t);
+      } else n.delete(t);
+      return n;
+    });
 
+  const activeChecks = tab === "MEETING" ? RR_CHECKS : tab === "FOLLOWUP" ? NR2_CHECKS : [];
+  const changedChecks = () => Object.fromEntries(activeChecks
+    .filter(({ key }) => dirty.get("checks")?.has(key))
+    .map(({ key }) => [key, checks[key]])) as Partial<Checks>;
+  const changedValues = (column: FormColumn) => Object.fromEntries(
+    [...(dirty.get(column) ?? [])].map((key) => [key, forms[column]?.[key] ?? ""]),
+  );
   const save = () => {
-    const cs: Partial<Record<CheckKey, boolean>> = {};
-    for (const c of activeForm.checks?.items ?? []) cs[c.key] = checks[c.key];
-    const values = dirty.has(tab) ? forms[activeForm.column] : null;
-    run(
-      () => saveFormAction(client.id, activeForm.stage, values, cs, activeFollowUp, infoDirty ? info : undefined),
-      () => setDirty((previous) => {
-        const saved = new Set(previous);
-        saved.delete(tab);
-        if (infoDirty) saved.delete("info");
-        return saved;
-      }),
-    );
+    const checkChanges = changedChecks();
+    const checkKeys = Object.keys(checkChanges);
+    if (tab === "MEETING") {
+      const infoChanges = Object.fromEntries([...(dirty.get("info") ?? [])].map((key) => [key, info[key as keyof Info] ?? ""]));
+      const formChanges: Partial<Record<"form_rr" | "form_nr1", Record<string, string>>> = {};
+      for (const column of ["form_rr", "form_nr1"] as const) {
+        if (dirty.has(column)) formChanges[column] = changedValues(column);
+      }
+      run(() => saveFactFindingAction(client.id, infoChanges, formChanges, checkChanges), () => {
+        clearDirty("info");
+        clearDirty("form_rr");
+        clearDirty("form_nr1");
+        clearDirty("checks", checkKeys);
+      });
+      return;
+    }
+
+    const def = CLIENT_FORMS.find((form) => form.phase === tab);
+    if (!def) return;
+    const keys = formFieldKeys(def).filter((key) => dirty.get(def.column)?.has(key));
+    const values = Object.fromEntries(keys.map((key) => [key, forms[def.column]?.[key] ?? ""]));
+    run(() => saveFormAction(client.id, def.stage, values, checkChanges), () => {
+      clearDirty(def.column, keys);
+      clearDirty("checks", checkKeys);
+    });
   };
 
-  const changeStage = (to: PipelineStage) => {
-    if (isClosedStage(to) && !ready) {
-      if (!window.confirm(`仲差 ${missing.length} 格先具備簽單條件，確定移去「${PIPELINE_STAGES.find((s) => s.key === to)?.label}」？`)) return;
-    }
+  const changeStage = (to: Stage) => {
+    const outstanding = missingChecks(client.checks);
+    if (isClosedStage(to) && !isClosedStage(stage) && outstanding.length
+      && !window.confirm(`仲有 ${outstanding.length} 項簽單條件未完成。確定轉去 ${stageLabel(to)}？`)) return;
     const prev = stage;
     setStage(to);
     setMsg(null);
@@ -165,160 +231,29 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
     });
   };
 
-  const changeSeason = (to: SeasonColumn) => {
-    const prev = season;
-    setSeason(to);
-    setMsg(null);
-    startTransition(async () => {
-      const res = await moveSeasonAction(client.id, to === NO_SEASON ? null : to);
-      if (!res.ok) {
-        setSeason(prev);
-        setMsg({ ok: false, text: res.error });
-      } else {
-        setMsg({ ok: true, text: "已更新四季" });
-        router.refresh();
-      }
-    });
-  };
-
   const remove = () => {
     if (!window.confirm(`確定永久刪除「${client.info.name}」？刪除後無法復原（審計記錄會保留刪除紀錄）。`)) return;
     run(() => deleteClientAction(client.id));
   };
 
-  const setField = (col: ClientFormColumn, key: string, v: string, activeTab: Tab = col) => {
+  const setField = (col: FormColumn, key: string, v: string) => {
     setForms((f) => ({ ...f, [col]: { ...f[col], [key]: v } }));
-    markDirty(activeTab);
+    markDirty(col, key);
   };
 
-  const renderForm = (def: ClientFormDef, followUp?: FollowUp) => {
-    const values = forms[def.column] ?? {};
-    const linkedProposal = proposalUrl(client.forms.form_pc.proposal_url ?? "");
-    return (
-      <div>
-        {!followUp && (
-          <p className="muted small" style={{ marginTop: 0 }}>
-            <b>{def.title}</b> — {def.timing}
-          </p>
-        )}
-        {def.stage === "RR" && (
-          <section className="form-section">
-            <h3>基本資料</h3>
-            <div className="grid-2">
-              <InfoFields
-                value={info}
-                disabled={readOnly || pending}
-                onChange={(value) => {
-                  setInfo(value);
-                  markDirty("info");
-                }}
-              />
-              <fieldset className="checklist">
-                <legend>基本資料 Checklist</legend>
-                {INFO_KEYS.map((key) => (
-                  <label className="check-row" key={key}>
-                    <input type="checkbox" checked={Boolean(info[key].trim())} disabled />
-                    <span>{INFO_LABELS[key]}</span>
-                  </label>
-                ))}
-              </fieldset>
-            </div>
-          </section>
-        )}
-        {def.tips && (
-          <ul className="form-tips">
-            {def.tips.map((t) => (
-              <li key={t}>＊{t}</li>
-            ))}
-          </ul>
-        )}
-        {def.sections.filter((section) => section.followUp === followUp).map((s, i) => (
-          <section key={i} className="form-section">
-            {s.title && <h3>{s.title}</h3>}
-            {s.note && <div className="section-note">{s.note}</div>}
-            <div className={s.fields.some((f) => f.type === "rating") ? undefined : "form-grid"}>
-              {s.fields.map((f) => (
-                f.type === "checkbox" ? (
-                  <label className="check-row" key={f.key}>
-                    <FieldInput f={f} value={values[f.key] ?? ""} disabled={readOnly || pending} onChange={(v) => setField(def.column, f.key, v)} />
-                    <span>{f.label}</span>
-                  </label>
-                ) : (
-                  <div key={f.key}>
-                    <label className="field">
-                      <span>
-                        {f.label}
-                        {f.hint && <em className="field-hint">{f.hint}</em>}
-                      </span>
-                      <FieldInput f={f} value={values[f.key] ?? ""} disabled={readOnly || pending} onChange={(v) => setField(def.column, f.key, v, followUp ?? def.column)} />
-                      {f.type === "notes" && <small className="muted">每行一點</small>}
-                    </label>
-                    {f.type === "url" && linkedProposal && (
-                      <a href={linkedProposal} target="_blank" rel="noopener noreferrer">開啟計劃書</a>
-                    )}
-                    {f.type === "notes" && values[f.key]?.trim() && (
-                      <ul>
-                        {values[f.key].split("\n").filter((line) => line.trim()).map((line, index) => <li key={index}>{line.trim()}</li>)}
-                      </ul>
-                    )}
-                  </div>
-                )
-              ))}
-            </div>
-          </section>
-        ))}
-        {def.checks && (
-          <div className="checklist">
-            <h3 style={{ marginTop: 0 }}>{def.checks.title}</h3>
-            {def.checks.items.map((c) => (
-              <div className="check-row" key={c.key}>
-                <input
-                  type="checkbox"
-                  id={c.key}
-                  checked={checks[c.key]}
-                  disabled={readOnly || pending}
-                  onChange={(e) => {
-                    setChecks((x) => ({ ...x, [c.key]: e.target.checked }));
-                    markDirty(def.column);
-                  }}
-                />
-                <label className="label" htmlFor={c.key}>
-                  {c.label}
-                </label>
-                {c.fill && (
-                  <div className="fill">
-                    <FieldInput
-                      f={{ ...c.fill, type: c.fill.type ?? "text" }}
-                      value={values[c.fill.key] ?? ""}
-                      disabled={readOnly || pending}
-                      onChange={(v) => setField(def.column, c.fill!.key, v)}
-                    />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
+  const tabDirty = (key: Stage) =>
+    (key === "MEETING" && dirty.has("info"))
+    || (key === "MEETING" && RR_CHECKS.some((check) => dirty.get("checks")?.has(check.key)))
+    || (key === "FOLLOWUP" && NR2_CHECKS.some((check) => dirty.get("checks")?.has(check.key)))
+    || CLIENT_FORMS.some((form) => form.phase === key && formFieldKeys(form).some((field) => dirty.get(form.column)?.has(field)));
+  const remaining = missingChecks(checks).length;
+  const setCheck = (key: CheckKey, checked: boolean) => {
+    setChecks((previous) => ({ ...previous, [key]: checked }));
+    markDirty("checks", key);
   };
-
-  const filled = (col: ClientFormColumn) => {
-    const def = CLIENT_FORMS.find((f) => f.column === col)!;
-    const keys = formFieldKeys({ ...def, sections: def.sections.filter((section) => !section.followUp) });
-    return { n: keys.filter((k) => (forms[col]?.[k] ?? "").trim() !== "").length, total: keys.length };
-  };
-  const tabs: { key: Tab; label: string; count?: string }[] = [
-    ...CLIENT_FORMS.map((f) => {
-      const c = filled(f.column);
-      return { key: f.column, label: stageLabel(f.stage), count: `${c.n}/${c.total}` };
-    }),
-    ...FOLLOW_UPS.map(({ key, label }) => ({ key, label })),
-  ];
   const genderText = GENDERS.find((g) => g.value === info.gender)?.label;
   const maritalText = MARITAL.find((m) => m.value === info.marital)?.label;
-  const meta = [info.age && `${info.age}歲`, genderText, info.occupation, maritalText].filter(Boolean).join(" · ");
-  const doneChecks = 8 - missing.length;
+  const meta = [info.age && ageLabel(info.age), genderText, info.occupation, maritalText].filter(Boolean).join(" · ");
 
   return (
     <div>
@@ -330,58 +265,27 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
         <div className="client-controls">
           <label className="ctl">
             <span>階段</span>
-            <select value={stage} disabled={readOnly || pending} onChange={(e) => changeStage(e.target.value as PipelineStage)} aria-label="階段">
-              {PIPELINE_STAGES.map((s) => (
+            <select value={stage} disabled={readOnly || pending} onChange={(e) => changeStage(e.target.value as Stage)} aria-label="階段">
+              {STAGES.map((s) => (
                 <option key={s.key} value={s.key}>
-                  {s.label}
+                  {s.short}
                 </option>
               ))}
             </select>
           </label>
-          <label className="ctl">
-            <span>四季</span>
-            <select
-              value={season}
-              disabled={readOnly || pending}
-              onChange={(e) => changeSeason(e.target.value as SeasonColumn)}
-              aria-label="四季"
-            >
-              <option value={NO_SEASON}>未分類</option>
-              {SEASONS.map((s) => (
-                <option key={s.key} value={s.key}>
-                  {s.emoji} {s.label}（{s.focus}）
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <div className={`readiness${ready ? " ok" : ""}`} data-testid="ready-box">
-          <div className="row">
-            <b>{ready ? "✅ 具備簽單條件" : `簽單條件 ${doneChecks}/8 · 仲差 ${missing.length} 格`}</b>
-            {checksDirty && <span className="muted small">（未儲存）</span>}
-          </div>
-          <div className="progress" aria-hidden>
-            <div style={{ width: `${(doneChecks / 8) * 100}%` }} />
-          </div>
-          {!ready && (
-            <div className="chips">
-              {missing.map((m) => (
-                <span key={m.label} className="chip">
-                  {stageLabel(m.stage)}・{m.label}
-                </span>
-              ))}
-            </div>
-          )}
+
         </div>
       </div>
 
-      <p className="muted small" style={{ margin: "12px 0 0" }}>{MEETING_TIPS}</p>
-      <div className="tabs" role="tablist">
-        {tabs.map((t) => (
+      <div className="tabs" role="tablist" aria-label="客戶資料">
+        {STAGES.map((t) => (
           <button
             key={t.key}
             role="tab"
+            id={`client-tab-${t.key}`}
+            aria-controls="client-tab-panel"
             aria-selected={tab === t.key}
+            disabled={pending}
             className={`tab${tab === t.key ? " active" : ""}`}
             onClick={() => {
               setTab(t.key);
@@ -389,23 +293,48 @@ export default function ClientEditor({ client, readOnly }: { client: EditorClien
             }}
           >
             {t.label}
-            {t.count && <span className="tab-count" aria-hidden="true">{t.count}</span>}
-            {(dirty.has(t.key) || (t.key === "form_rr" && dirty.has("info"))) && <span className="dot" title="未儲存" />}
+            {tabDirty(t.key) && <span className="dot" title="未儲存" />}
           </button>
         ))}
       </div>
 
-      <div className="card">
-        {renderForm(activeForm, activeFollowUp)}
+      <div className="card" role="tabpanel" id="client-tab-panel" aria-labelledby={`client-tab-${tab}`}>
+        {tab === "MEETING" && (
+          <section aria-label="基本資料">
+          <h2>基本資料</h2>
+          <InfoFields
+            value={info}
+            disabled={readOnly || pending}
+            onChange={(v) => {
+              setInfo(v);
+              for (const key of Object.keys(v) as (keyof Info)[]) if (v[key] !== info[key]) markDirty("info", key);
+            }}
+          />
+          </section>
+        )}
+        <ClientStageForm phase={tab} forms={forms} info={info} readOnly={readOnly || pending} onChange={setField} />
+        {activeChecks.length > 0 && (
+          <fieldset className="client-fieldset">
+            <legend>簽單條件</legend>
+            <p className="muted small" data-testid="ready-box">{remaining ? `仲差 ${remaining} 格` : "具備簽單條件"}</p>
+            {activeChecks.map(({ key, label }) => (
+              <label className="check-row" key={key}>
+                <input type="checkbox" checked={checks[key]} disabled={readOnly || pending}
+                  onChange={(event) => setCheck(key, event.target.checked)} />
+                {label}
+              </label>
+            ))}
+          </fieldset>
+        )}
 
         {!readOnly && (
           <div className="savebar">
-            <button className="btn btn-primary" onClick={save} disabled={pending || (!dirty.has(tab) && !infoDirty)}>
+            <button className="btn btn-primary" onClick={save} disabled={pending || !tabDirty(tab)}>
               {pending ? "儲存中…" : "儲存"}
             </button>
             {msg && <span className={msg.ok ? "notice" : "error"}>{msg.text}</span>}
             <span className="spacer" />
-            {tab === "form_rr" && (
+            {tab === "MEETING" && (
               <button className="btn btn-danger btn-sm" onClick={remove} disabled={pending}>
                 刪除客戶
               </button>

@@ -1,0 +1,23 @@
+import React from "react";
+import {renderToStaticMarkup} from "react-dom/server";
+import {beforeEach,describe,it,expect,vi} from "vitest";
+const mocks=vi.hoisted(()=>({auth:vi.fn(),cards:vi.fn(),tasks:vi.fn(),appointments:vi.fn(),notes:vi.fn()}));
+vi.mock("@/lib/auth",()=>({requireUser:mocks.auth,displayName:(p:any)=>p.full_name}));
+vi.mock("@/lib/data",()=>({listClientCards:mocks.cards,toBoardCards:()=>[]}));
+vi.mock("@/lib/planner-data",()=>({loadFollowups:mocks.tasks}));
+vi.mock("@/lib/activity-data",()=>({loadCalendarEntries:mocks.appointments,loadTeamCalendarEntries:mocks.appointments}));
+vi.mock("@/lib/coaching/store",()=>({loadCoaching:mocks.notes}));
+vi.mock("@/components/Board",()=>({default:(p:any)=>React.createElement("div",{"data-readonly":p.readOnly}) }));
+vi.mock("next/link",()=>({default:({href,children,...props}:any)=>React.createElement("a",{href,...props},children)}));
+vi.mock("next/navigation",()=>({redirect:(path:string)=>{throw Error(`redirect:${path}`);}}));
+import BoardPage from "@/app/(app)/board/page";
+import SeasonsPage from "@/app/(app)/seasons/page";
+import ReviewPage from "@/app/(app)/review/page";
+const owner="11111111-1111-4111-8111-111111111111";
+beforeEach(()=>{vi.stubGlobal("React",React);vi.clearAllMocks();mocks.auth.mockResolvedValue({supabase:{},profile:{id:owner,role:"agent"}});mocks.cards.mockResolvedValue([]);mocks.tasks.mockResolvedValue([]);mocks.appointments.mockResolvedValue([]);mocks.notes.mockResolvedValue([]);});
+describe("consolidated customer and coaching routes",()=>{
+ it("ignores a colleague's manipulated owner filter",async()=>{const html=renderToStaticMarkup(await BoardPage({searchParams:Promise.resolve({agent:"other"})}));expect(mocks.cards).toHaveBeenCalledWith({},owner);expect(mocks.tasks).toHaveBeenCalledWith({},owner);expect(html).toContain('data-readonly="false"');expect(html).not.toContain('name="agent"');});
+ it("sends old network links to the same customer page and preserves the owner",async()=>{await expect(SeasonsPage({searchParams:Promise.resolve({agent:owner})})).rejects.toThrow(`redirect:/board?agent=${owner}`);});
+ it("sends the old team review into coaching overview preserving the week",async()=>{await expect(ReviewPage({searchParams:Promise.resolve({week:"2026-11-02"})})).rejects.toThrow("redirect:/admin?week=2026-11-02");});
+ it("shows unavailable data as an error instead of claiming no instructions",async()=>{mocks.notes.mockRejectedValue(Error("unavailable"));const html=renderToStaticMarkup(await BoardPage({searchParams:Promise.resolve({focus:"coach"})}));expect(html).toContain("部分跟進資料未能讀取");});
+});
