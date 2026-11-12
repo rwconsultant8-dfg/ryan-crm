@@ -32,12 +32,12 @@ function TaskRow({ task, readOnly, onComplete }: { task: Task; readOnly: boolean
   </article>;
 }
 
-export default function DailyPlanner({ tasks, focusTasks, appointments = [], clients = [], missingClients = [], initialClient = "", ownerQuery = "", monday, today, readOnly, simple = false, showIntro=true }: {
+export default function DailyPlanner({ tasks, focusTasks, appointments = [], clients = [], missingClients = [], initialClient = "", initialDay, ownerQuery = "", monday, today, readOnly, simple = false, showIntro=true }: {
   tasks: Task[]; focusTasks: Task[]; appointments?: CalendarEntry[]; clients?: ClientOption[]; missingClients?: ClientOption[];
-  initialClient?: string; ownerQuery?: string; monday: string; today: string; readOnly: boolean; simple?: boolean; showIntro?:boolean;
+  initialClient?: string; initialDay?: string; ownerQuery?: string; monday: string; today: string; readOnly: boolean; simple?: boolean; showIntro?:boolean;
 }) {
   const days = weekDays(monday);
-  const [day, setDay] = useState(days.includes(today) ? today : monday);
+  const [day, setDay] = useState(initialDay && days.includes(initialDay) ? initialDay : days.includes(today) ? today : monday);
   const [clientId, setClientId] = useState(initialClient);
   const [filter, setFilter] = useState<"day" | "overdue" | "missing">("day");
   const [error, setError] = useState("");
