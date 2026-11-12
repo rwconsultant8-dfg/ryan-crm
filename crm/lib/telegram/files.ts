@@ -48,12 +48,12 @@ export async function saveBotFile(admin: SupabaseClient, scope: string, name: st
   }
   return storedName;
 }
-export async function listBotFiles(admin: SupabaseClient, scope: string) {
+export async function listBotFiles(admin: SupabaseClient, scope: string, offset = 0) {
   objectPath(scope, "check");
   const bucket = await admin.storage.getBucket(BUCKET);
   if (bucket.error) { if (String((bucket.error as {statusCode?:string}).statusCode) === "404") return []; throw new Error("暫時未能讀取檔案區"); }
   if (!bucket.data || bucket.data.public) throw new Error("檔案區未設定為私人");
-  const { data, error } = await admin.storage.from(BUCKET).list(scope, { limit: 50, sortBy: { column: "created_at", order: "desc" } });
+  const { data, error } = await admin.storage.from(BUCKET).list(scope, { limit: 50, offset, sortBy: { column: "created_at", order: "desc" } });
   if (error) { if (String((error as {statusCode?:string}).statusCode) === "404") return []; throw new Error("暫時未能讀取檔案"); }
   return (data ?? []).filter(f => f.id && f.name.endsWith(".enc")).map(f => ({ key: f.name, name: displayName(f.name), created_at: f.created_at }));
 }
