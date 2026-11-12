@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { decryptColumn, encryptColumn } from "@/lib/secure";
 import { readContactHistory } from "@/lib/followups";
+import { MEETING_FOCUS_LIMIT, readMeetingFocus } from "@/lib/meeting";
 import { hkToday, isDate } from "@/lib/weeks";
 import { isSeason, seasonForStage, stageForSeason, pipelinePatch } from "@/lib/seasons";
 import {
@@ -83,6 +84,22 @@ async function loadEnc(id: string, column: string): Promise<{ encrypted: Record<
   const row = data as Record<string, unknown> | null;
   if (!row || row.owner_id !== profile.id) return null;
   return { encrypted: (row[column] as Record<string, string>) ?? {}, updatedAt: row.updated_at as string | undefined };
+}
+
+export async function saveMeetingFocusAction(id: string, focus: string, previous: string | null): Promise<ActionResult> {
+  if (typeof focus !== "string" || focus.length > MEETING_FOCUS_LIMIT) {
+    return { ok: false, error: "今次重點最多 1500 字。" };
+  }
+
+  const existing = await loadEnc(id, "info");
+  if (!existing?.updatedAt) return { ok: false, error: NO_ACCESS };
+  const saved = readMeetingFocus(decryptColumn(id, "info", existing.encrypted).meeting_focus);
+  if (saved !== previous) return { ok: false, error: "今次重點啱啱有更新，請重新載入後再修改。" };
+
+  const next = focus.trim();
+  if (next === saved) return { ok: true };
+  const info = encryptColumn(id, "info", existing.encrypted, { meeting_focus: JSON.stringify(next) });
+  return updateOwn(id, { info }, existing.updatedAt);
 }
 
 export async function updateInfoAction(id: string, raw: Record<string, string>): Promise<ActionResult> {

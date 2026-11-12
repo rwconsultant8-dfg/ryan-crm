@@ -69,7 +69,14 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
       <p className="small">
         <Link href={readOnly ? `/admin/agents/${client.owner_id}` : "/board"}>← 返回看板</Link>
       </p>
-      <MeetingBrief clientName={client.info.name||"未命名客戶"} brief={clientBrief(client,allTasks,allAppointments,today)} ownerName={owner} readOnly={readOnly}/>
+      <MeetingBrief
+        clientId={id}
+        clientName={client.info.name || "未命名客戶"}
+        brief={clientBrief(client, coaching, today)}
+        ownerName={owner}
+        readOnly={readOnly}
+        coachingUnavailable={coachingError}
+      />
       {!readOnly&&<MeetingNote clientId={id} today={today}/>}
       {coachingError?<p className="error" role="alert">跟進事項暫時未能讀取，唔代表冇事項。</p>:<CoachingPanel clientId={id} notes={coaching} isAdmin={profile.role==="admin"} isOwner={!readOnly} today={today}/>}
       <ClientEditor

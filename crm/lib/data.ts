@@ -7,7 +7,7 @@ import { hkToday } from "./weeks";
 import type { Task } from "./planner";
 import { CHECK_KEYS, FORMS, PROPOSAL_FIELD_ALIASES, REFERRAL_STAGE_KEY, normalizeStage, type Checks, type FormColumn, type Stage } from "./stages";
 
-export type ClientInfo = { name: string; age: string; gender: string; occupation: string; marital: string; customer_type?: string; last_contact_at?: string; contact_history?:string };
+export type ClientInfo = { name: string; age: string; gender: string; occupation: string; marital: string; customer_type?: string; last_contact_at?: string; contact_history?:string; meeting_focus?:string };
 
 export type ClientCard = {
   id: string;
@@ -40,6 +40,7 @@ function toInfo(id: string, enc: unknown): ClientInfo {
     customer_type: p.customer_type ?? "",
     last_contact_at: p.last_contact_at || undefined,
     contact_history:p.contact_history || undefined,
+    meeting_focus: p.meeting_focus,
   };
 }
 

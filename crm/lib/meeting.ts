@@ -5,3 +5,16 @@ export const meetingSchema=z.object({
 });
 export type MeetingSummary=z.infer<typeof meetingSchema>;
 export const meetingJsonSchema={type:"object",additionalProperties:false,required:["occurred","summary","response","blocker","needs_help","next_step","next_day"],properties:{occurred:{type:"boolean"},summary:{type:"string"},response:{type:"string"},blocker:{type:"string"},needs_help:{type:"boolean"},next_step:{type:"string"},next_day:{type:"string"}}} as const;
+
+export const MEETING_FOCUS_LIMIT = 1500;
+
+/** An empty saved string records that the owner cleared the plan. */
+export function readMeetingFocus(saved?: string): string | null {
+  if (saved === undefined) return null;
+  try {
+    const focus: unknown = JSON.parse(saved);
+    return typeof focus === "string" ? focus : null;
+  } catch {
+    return null;
+  }
+}

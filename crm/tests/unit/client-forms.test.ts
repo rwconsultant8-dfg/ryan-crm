@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { coachingDatabase } from "./helpers/coaching-db";
 import { encryptColumn, decryptColumn } from "@/lib/secure";
 import { getClientFull, listClientCards } from "@/lib/data";
-import { moveStageAction, saveFactFindingAction, saveFormAction, updateInfoAction } from "@/app/(app)/clients/actions";
+import { moveStageAction, saveFactFindingAction, saveFormAction, saveMeetingFocusAction, updateInfoAction } from "@/app/(app)/clients/actions";
 import ClientEditor, { ClientStageForm, type EditorClient } from "@/components/ClientEditor";
 import { factFindingChecklist, pointFormLines } from "@/lib/client-forms";
 import { CHECK_KEYS, STAGES, type Checks, type Stage } from "@/lib/stages";
@@ -124,6 +124,22 @@ describe("簡化表單儲存", () => {
     context.db = fake.db;
     return fake;
   }
+  it("allows the client owner to save and clear meeting focus while preserving history", async () => {
+    const fake = database();
+    const row = fake.tables.clients[0];
+    context.owner = "supervisor";
+    expect((await saveMeetingFocusAction("client", "核對文件", null)).ok).toBe(false);
+    expect(fake.writes).toHaveLength(0);
+    context.owner = "staff";
+    expect(await saveMeetingFocusAction("client", "核對文件", null)).toEqual({ ok: true });
+    expect((await saveMeetingFocusAction("client", "覆蓋更新", null)).ok).toBe(false);
+    expect(decryptColumn("client", "info", row.info)).toMatchObject({
+      meeting_focus: JSON.stringify("核對文件"), contact_history: "保留 Telegram 歷史",
+    });
+    expect(await saveMeetingFocusAction("client", "", "核對文件")).toEqual({ ok: true });
+    expect(decryptColumn("client", "info", row.info).meeting_focus).toBe(JSON.stringify(""));
+  });
+
   it("saves Fact Finding, its basic details and checks together without overwriting hidden history", async () => {
     const fake = database();
     const row = fake.tables.clients[0];
