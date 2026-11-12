@@ -14,11 +14,12 @@ import { codexMode, enqueueJob, cancelOwnerJobs } from "../codex/jobs";
 import { ensureNamedClients } from "./named-clients";
 import { loadSchedulingContext } from "./scheduling-context";
 import {hasClientFacts} from "./content";
+import {continuesTelegramDraft} from "../telegram/draft-context";
 import {queuedAcknowledgement} from "../telegram/progress";
 import type { Extraction } from "./schema";
 import { deliverCoachReply, loadCoachConversation, savedCoachReply } from "../telegram/conversation";
 
-export type Incoming = { from: string; messageId: string; type: string; text: string; fileId?:string;fileName?:string;mimeType?:string;fileSize?:number;telegramMessageId?:number };
+export type Incoming = { from: string; messageId: string; type: string; text: string; fileId?:string;fileName?:string;mimeType?:string;fileSize?:number;telegramMessageId?:number;quotedText?:string };
 
 const HELP = `你好，我係 ZEST 團隊助手。
 有問題可以直接問我；想記錄客戶資料或安排，就講客戶姓名同重點，我會幫你更新到 app。
@@ -71,7 +72,7 @@ export async function processIncoming(
   admin: ReturnType<typeof createAdminClient>,
   sendText: (to: string, text: string) => Promise<void>,
   channel: "telegram" | "whatsapp" = "whatsapp",
-  resolved?: { extract: (text:string,today:string)=>Promise<Extraction>; today:string },
+  resolved?: { extract: (text:string,today:string)=>Promise<Extraction>; today:string; draftContext?:string[]; expectedDraftId?:string|null },
 ): Promise<void> {
   const text = msg.text.trim().slice(0, 4000);
   const deliverText=sendText;
@@ -83,6 +84,13 @@ export async function processIncoming(
   const latest = await latestPending(admin, ownerId);
   const pending = latest && (latest.draft.channel ?? "whatsapp") === channel ? latest : null;
 
+  const quotedAction = channel === "telegram" && msg.quotedText && (CONFIRM.test(text) || CANCEL.test(text));
+  if (quotedAction) {
+    const normalize = (value:string) => value.normalize("NFKC").replace(/\s+/gu,"").trim();
+    const currentPreview = pending && (pending.draft.extraction.clarification?.trim() || describeDraft(pending.draft));
+    if (!currentPreview || normalize(currentPreview)!==normalize(msg.quotedText!))
+      return sendText(msg.from,"請喺 CRM「同事更新」揀返你要處理嗰份草稿。");
+  }
   if (CONFIRM.test(text)) {
     if (!pending) return sendText(msg.from, "好，有需要隨時同我講。");
     if(pending.draft.extraction.clarification?.trim())return sendText(msg.from,pending.draft.extraction.clarification.trim());
@@ -102,17 +110,25 @@ export async function processIncoming(
   }
 
   if (CANCEL.test(text)) {
-    const queued=channel==="telegram" && codexMode() ? await cancelOwnerJobs(admin,ownerId) : false;
+    const queued=!quotedAction && channel==="telegram" && codexMode() ? await cancelOwnerJobs(admin,ownerId) : false;
     if (pending && (await setStatus(admin, pending.id, "cancelled"))) return sendText(msg.from, "已取消今次待確認更新。");
     return sendText(msg.from, queued ? "已取消今次處理。" : "冇未確認嘅內容。");
   }
 
   // 新內容（或者補充上一份未確認嘅內容）
-  const recent = pending && Date.now() - new Date(pending.created_at).getTime() < MERGE_WINDOW_MS ? pending : null;
-  const texts = [...(recent?.draft.texts ?? []), text];
+  const openRecent = pending && Date.now() - new Date(pending.created_at).getTime() < MERGE_WINDOW_MS ? pending : null;
+  const olderContext = channel === "telegram" && (!resolved || resolved.draftContext !== undefined)
+    ? resolved?.draftContext ?? (openRecent && continuesTelegramDraft(text,openRecent.draft.extraction.clarification,msg.quotedText,openRecent.draft.texts) ? openRecent.draft.texts : [])
+    : openRecent?.draft.texts ?? [];
+  if (resolved?.draftContext?.length && pending?.id !== resolved.expectedDraftId) {
+    return sendText(msg.from,"呢份草稿已有新版本，請喺 CRM「同事更新」核對。");
+  }
+  const recent = olderContext.length ? (resolved?.draftContext ? pending : openRecent) : null;
+  const texts = [...olderContext, text];
   const today = resolved?.today || hkToday();
   if (channel === "telegram" && codexMode() && !resolved) {
-    try { await enqueueJob(admin, {kind:"extraction",ownerId,from:msg.from,messageId:msg.messageId,text:msg.text,texts: texts.join("\n\n"),today,expectedDraftId:pending?.id || null}); }
+    try { await enqueueJob(admin, {kind:"extraction",ownerId,from:msg.from,messageId:msg.messageId,text,texts: texts.join("\n\n"),today,expectedDraftId:pending?.id || null,
+      draftContext:olderContext,telegramMessageId:msg.telegramMessageId,receivedAt:Date.now(),quotedText:msg.quotedText}); }
     catch { return sendText(msg.from,"暫時未能處理，請稍後再試。"); }
     const acknowledgement=queuedAcknowledgement(msg.text);
     if(acknowledgement)await sendText(msg.from,acknowledgement);
@@ -128,7 +144,7 @@ export async function processIncoming(
           loadSchedulingContext(admin, ownerId, today),
           channel === "telegram" ? loadCoachConversation(admin, ownerId).catch(() => []) : Promise.resolve([]),
         ]);
-        return extractFromMessage(texts.join("\n\n"), today, { ...schedule, latest_message: text, conversation });
+        return extractFromMessage(texts.join("\n\n"), today, { ...schedule, latest_message: text, quoted_reply: msg.quotedText, conversation });
       })();
   } catch (e) {
     const issue=aiFailureInfo(e);

@@ -8,9 +8,9 @@ import {hkToday} from "../weeks";
 
 export type CoachTurn = { user: string; assistant: string };
 
-export async function loadCoachConversation(admin: SupabaseClient, ownerId: string): Promise<CoachTurn[]> {
+export async function loadCoachConversation(admin: SupabaseClient, ownerId: string, before = Date.now()): Promise<CoachTurn[]> {
   const scope = fileScope("coach", ownerId);
-  const files = (await listBotFiles(admin, scope)).filter((file) => file.name.startsWith("AI對話-") && Date.parse(file.created_at || "") > Date.now() - 24 * 3600_000).slice(0, 6).reverse();
+  const files = (await listBotFiles(admin, scope)).filter((file) => file.name.startsWith("AI對話-") && (Date.parse(file.created_at || "") > before - 24 * 3600_000 && Date.parse(file.created_at || "") <= before)).slice(0, 6).reverse();
   const turns = await Promise.all(files.map(async (file) => {
     try {
       const turn: unknown = JSON.parse((await readBotFile(admin, scope, file.key)).body.toString());
@@ -25,7 +25,7 @@ export async function loadCoachConversation(admin: SupabaseClient, ownerId: stri
 
 const noteFollowup = /^(?:呢(?:一)?[個份段]|頭先嗰[個份段]|上面嗰[個份段])(?:就)?係(?:客戶|見客)(?:嘅)?(?:資料|紀錄|記錄)[。！!]*$/;
 
-export async function recoverCoachNote(admin: SupabaseClient, ownerId: string, text: string): Promise<string | null> {
+export async function recoverCoachNote(admin: SupabaseClient, ownerId: string, text: string, quote?:string): Promise<string | null> {
   if (!noteFollowup.test(text.trim())) return null;
   const scope = fileScope("coach", ownerId);
   const files = await listBotFiles(admin, scope);
@@ -45,6 +45,7 @@ export async function recoverCoachNote(admin: SupabaseClient, ownerId: string, t
   ]);
   const turn = JSON.parse(replyFile.body.toString());
   const original = messageFile.body.toString().trim().slice(0, 4000);
+  if (quote && quote.trim()!==original.slice(0,2000) && quote.trim()!==turn?.assistant?.slice(0,2000)) return null;
   return turn?.failedNote === true && turn.user === original && isClientNote(original) ? original : null;
 }
 

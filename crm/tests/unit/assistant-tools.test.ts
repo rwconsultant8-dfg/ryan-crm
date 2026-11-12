@@ -72,3 +72,11 @@ it("routes factual meeting notes locally even when they mention comparisons and 
   expect(isClientNote(note + "\n幫我查資料，比較兩份保費。")).toBe(false);
   expect(needsResearch(note + "\n幫我查資料，比較兩份保費。")).toBe(true);
 });
+
+it("keeps ordinary drafting and CRM requests out of public research",()=>{
+  for (const message of ["我想睇返今日客戶記錄","客人話 FWD 保障貴，我可以點覆佢？","幫我搵返尋日見客份紀錄"]) {
+    expect(needsResearch(message)).toBe(false);
+    expect(verificationRequired(message,"可以。")).toBe(false);
+  }
+  expect(needsResearch("幫我查 FWD 官方產品條款")).toBe(true);
+});

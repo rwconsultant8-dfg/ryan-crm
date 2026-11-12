@@ -41,11 +41,13 @@ describe("Codex structured result boundary",()=>{
 
 describe("Assistant tools do not enter CRM writes",()=>{
  it("consumes the lease once and continues with server-owned tool receipts",async()=>{
+  const publicJob={...job,text:"幫我查 FWD 官方小冊子"};
+  m.claim.mockResolvedValue({job:publicJob,revision:"r"});
   m.execute.mockResolvedValue({tool:"web_search",ok:true,data:{results:[]}});
   const result={response:{kind:"tool",text:""},tool:{name:"web_search",query:"FWD 官方香港小冊子"}};
   expect((await POST(request({id,lease,result}))).status).toBe(200);
-  expect(m.finish).toHaveBeenCalledWith(expect.anything(),id,expect.anything(),job,"done");
-  expect(m.execute).toHaveBeenCalledWith(expect.anything(),"staff-a","12345",result.tool,undefined,job.text);
+  expect(m.finish).toHaveBeenCalledWith(expect.anything(),id,expect.anything(),publicJob,"done");
+  expect(m.execute).toHaveBeenCalledWith(expect.anything(),"staff-a","12345",result.tool,undefined,publicJob.text);
   expect(m.send).toHaveBeenCalledWith("12345",expect.stringContaining("預計約 2–5 分鐘"));
   expect(m.enqueue).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({ownerId:"staff-a",from:"12345",work:expect.objectContaining({step:1})}));
   expect(m.process).not.toHaveBeenCalled();expect(m.latest).not.toHaveBeenCalled();
@@ -69,7 +71,7 @@ it("requires official-source verification before answering a product question",a
 });
 
 it("does not repeat the time estimate for each step of the same task",async()=>{
-  m.claim.mockResolvedValue({job:{...job,work:{rootMessageId:"x",step:1,etaNotified:true,observations:[]}},revision:"r"});
+  m.claim.mockResolvedValue({job:{...job,text:"幫我查 FWD 官方小冊子",work:{rootMessageId:"x",step:1,etaNotified:true,observations:[]}},revision:"r"});
   m.execute.mockResolvedValue({tool:"open_url",ok:true,data:{}});
   expect((await POST(request({id,lease,result:{response:{kind:"tool",text:""},tool:{name:"open_url",url:"https://www.fwd.com.hk/"}}}))).status).toBe(200);
   expect(m.send).not.toHaveBeenCalled();
@@ -83,4 +85,25 @@ it("rejects a web tool returned for a private factual note before execution", as
   expect((await POST(request({id,lease,result}))).status).toBe(200);
   expect(m.execute).not.toHaveBeenCalled();
   expect(m.send).toHaveBeenCalledWith("12345",expect.stringContaining("原文已保留"));
+});
+
+it("retries a failed extraction once with the original message and context",async()=>{
+  const original={...job,draftContext:[],telegramMessageId:45,quotedText:"Previous question"};
+  m.claim.mockResolvedValue({job:original,revision:"r"});
+  expect((await POST(request({id,lease,failed:true}))).status).toBe(200);
+  expect(m.enqueue).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({messageId:"telegram:1:retry",retry:true,draftContext:[],quotedText:"Previous question"}));
+  expect(m.send).not.toHaveBeenCalled();
+  m.enqueue.mockClear();
+  m.claim.mockResolvedValue({job:{...original,retry:true},revision:"r"});
+  expect((await POST(request({id,lease,failed:true}))).status).toBe(200);
+  expect(m.enqueue).not.toHaveBeenCalled();
+  expect(m.send).toHaveBeenCalledWith("12345",expect.stringContaining("未能回應"),undefined,45);
+});
+
+it("returns a targeted clarification on a public question without searching an arbitrary product", async()=>{
+  m.claim.mockResolvedValue({job:{...job,text:"FWD保障係點？",telegramMessageId:21},revision:"r"});
+  const answer="你想查邊個 FWD 產品嘅保障？";
+  await POST(request({id,lease,result:{response:{kind:"chat",text:answer}}}));
+  expect(m.send).toHaveBeenCalledWith("12345",answer,undefined,21);
+  expect(m.enqueue).not.toHaveBeenCalled();
 });

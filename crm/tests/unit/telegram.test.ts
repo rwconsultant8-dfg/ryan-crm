@@ -21,6 +21,12 @@ describe("Telegram transport boundaries", () => {
       { ...incoming, message: { ...incoming.message, from: { id: 123456789, is_bot: true } } }];
     for (const value of cases) expect(parsePrivateMessage(value)).toBeNull();
   });
+  it("keeps same-chat replies as context and ignores quotes from another chat", () => {
+    const reply = {text:"邊份文件？",chat:incoming.message.chat,from:{id:2,is_bot:true}};
+    const update = {...incoming,message:{...incoming.message,reply_to_message:reply}};
+    expect(parsePrivateMessage(update)?.quotedText).toBe(reply.text);
+    expect(parsePrivateMessage({...update,message:{...update.message,reply_to_message:{...reply,chat:{id:7,type:"private"}}}})?.quotedText).toBeUndefined();
+  });
   it("reacts to the original message with a small thumbs-up instead of sending an emoji message",async()=>{
     const fetcher=vi.fn().mockResolvedValue({ok:true,json:async()=>({ok:true})});vi.stubGlobal('fetch',fetcher);
     try{await reactTelegramMessage('123456789',5,'test-token');expect(fetcher.mock.calls[0][0]).toContain('/setMessageReaction');expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({chat_id:'123456789',message_id:5,reaction:[{type:'emoji',emoji:'👍'}],is_big:false});}finally{vi.unstubAllGlobals();}

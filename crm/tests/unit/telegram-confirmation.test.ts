@@ -4,6 +4,7 @@ vi.mock("@/lib/whatsapp/scheduling-context",()=>({loadSchedulingContext:async()=
 vi.mock("@/lib/whatsapp/ai", () => ({ AiRefusal: class extends Error {}, extractFromMessage: mocks.extract }));
 vi.mock("@/lib/whatsapp/drafts", () => ({ latestPending: mocks.latest, setStatus: mocks.setStatus, reopen: vi.fn(), sealDraft: mocks.seal }));
 vi.mock("@/lib/whatsapp/apply", () => ({ applyDraft: mocks.apply, describeDraft: () => "預覽，回覆確認", describeSavedDraft:()=>"已整理並同步到 app", hasContent: () => true, loadClientNames: async () => [], matchClient: vi.fn() }));
+import {openJob} from "@/lib/codex/jobs";
 import { processIncoming } from "@/lib/whatsapp/handle";
 const draft = { channel: "telegram", target: { mode: "none" }, extraction: { tasks: [] } };
 const admin = { from: vi.fn() };
@@ -60,6 +61,25 @@ describe("Telegram explicit confirmation", () => {
     await processIncoming(message("取消"), "staff-a", admin as never, send, "telegram");
     expect(mocks.setStatus).toHaveBeenCalledWith(admin, "draft-a", "cancelled");
     expect(mocks.apply).not.toHaveBeenCalled();
+  });
+  it("isolates a new meeting note while keeping an explicit clarification reply", async () => {
+    vi.stubEnv("AI_MODE","codex");
+    vi.stubEnv("DATA_ENCRYPTION_KEY",Buffer.alloc(32,12).toString("base64"));
+    const insert=vi.fn().mockResolvedValue({error:null});admin.from.mockReturnValue({insert});
+    const prior="Mary 要改期", question="Mary 原定邊日幾點？";
+    mocks.latest.mockResolvedValue({id:"pending",created_at:new Date().toISOString(),draft:{...draft,texts:[prior],extraction:{clarification:question}}});
+    await processIncoming(message("今日同 Ada 見面了解佢嘅職業同家用"),"staff-a",admin as never,send,"telegram");
+    let stored=insert.mock.calls[0][0];
+    expect(openJob(stored.id,stored.payload)).toMatchObject({draftContext:[],texts:"今日同 Ada 見面了解佢嘅職業同家用"});
+    await processIncoming({...message("原本係聽日下午三點"),messageId:"telegram:43",quotedText:question},"staff-a",admin as never,send,"telegram");
+    stored=insert.mock.calls[1][0];
+    expect(openJob(stored.id,stored.payload)).toMatchObject({draftContext:[prior],quotedText:question});
+  });
+  it("cannot apply a current draft by confirming a different quoted message", async () => {
+    mocks.latest.mockResolvedValue({id:"current",draft});
+    await processIncoming({...message("確認"),quotedText:"另一份見客紀錄"},"staff-a",admin as never,send,"telegram");
+    expect(mocks.apply).not.toHaveBeenCalled();
+    expect(mocks.setStatus).not.toHaveBeenCalled();
   });
   it("cannot confirm a legacy WhatsApp draft through Telegram", async () => {
     mocks.latest.mockResolvedValue({ id: "legacy", draft: { ...draft, channel: undefined } });
