@@ -75,3 +75,12 @@ it("does not repeat the time estimate for each step of the same task",async()=>{
   expect(m.send).not.toHaveBeenCalled();
   expect(m.enqueue).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({work:expect.objectContaining({etaNotified:true})}));
 });
+
+it("rejects a web tool returned for a private factual note before execution", async () => {
+  const note = "Ada，任職老師，琴日同佢見面整理收入同家用。佢有提到學校人工對比之前高咗，亦有傾保障同儲蓄，未定下一步。";
+  m.claim.mockResolvedValue({job:{...job,text:note,texts:note},revision:"r"});
+  const result={response:{kind:"tool",text:""},tool:{name:"web_search",query:"private facts"}};
+  expect((await POST(request({id,lease,result}))).status).toBe(200);
+  expect(m.execute).not.toHaveBeenCalled();
+  expect(m.send).toHaveBeenCalledWith("12345",expect.stringContaining("原文已保留"));
+});

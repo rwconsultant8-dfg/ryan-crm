@@ -18,7 +18,7 @@ import {sendTelegramText} from "@/lib/telegram/transport";
 import {deliverCoachReply,loadCoachConversation} from "@/lib/telegram/conversation";
 import {CONVERSATION_PROBE_ID,CONVERSATION_PROBE_TEXT,conversationProbePassed} from "@/lib/codex/conversation-probe";
 import {ASSISTANT_PROBE_ID,ASSISTANT_PROBE_TEXT} from "@/lib/assistant/health";
-import {toolResultSchema,toolResultJsonSchema,TOOL_INSTRUCTIONS,MAX_TOOL_STEPS,verificationRequired,researchSourceMissing,researchToolJsonSchema} from "@/lib/assistant/schema";
+import {toolResultSchema,toolResultJsonSchema,TOOL_INSTRUCTIONS,MAX_TOOL_STEPS,verificationRequired,researchSourceMissing,researchToolJsonSchema,isClientNote} from "@/lib/assistant/schema";
 import {runResearchProbe,researchProbeReport} from "@/lib/assistant/research-probe";
 import {assistantSmokeCheck} from "@/lib/assistant/smoke";
 import {assistantFileList,executeTool,sourceReply} from "@/lib/assistant/execute";
@@ -69,10 +69,11 @@ export async function GET(request:NextRequest){
       job.work?Promise.resolve(undefined):loadSchedulingContext(admin,job.ownerId,job.today),
       loadCoachConversation(admin,job.ownerId).catch(()=>[]),
     ]):[undefined,[]];
-    const forceResearch=(job.kind==="extraction"||job.probe==="assistant-tools-v1")&&researchSourceMissing(job.text||job.texts,job.work);
+    const clientNote = isClientNote(job.text || job.texts);
+    const forceResearch=!clientNote&&(job.kind==="extraction"||job.probe==="assistant-tools-v1")&&researchSourceMissing(job.text||job.texts,job.work);
     const searchOnly=!job.work?.observations.some(o=>o.tool==="web_search"&&o.ok);
-    const files=job.kind==="extraction"?await assistantFileList(admin,job.ownerId).catch(()=>[]):[];
-    return NextResponse.json({id,lease:job.lease,instructions:SYSTEM+"\n\n"+TOOL_INSTRUCTIONS+(forceResearch?"\n本次必須先用工具核實官方來源；請輸出tool請求，唔可以重複拒絕上網或只講未核實。":""),input:JSON.stringify({today:job.today,latest_message:job.text || job.texts,pending_context:job.texts,conversation:job.probe==="assistant-tools-v1"?[{user:"我想比較醫療保費",assistant:"我目前無法即時上網。"}]:conversation,stored_schedule:context,files,tool_results:job.work?.observations||[],remaining_tool_steps:MAX_TOOL_STEPS-(job.work?.step||0)}),schema:{...extractionJsonSchema,required:[...extractionJsonSchema.required,"tool"],properties:{...extractionJsonSchema.properties,response:{...extractionJsonSchema.properties.response,properties:{...extractionJsonSchema.properties.response.properties,kind:{type:"string",enum:forceResearch?["tool"]:["chat","update","tool"]}}},tool:forceResearch?researchToolJsonSchema(searchOnly):{anyOf:[{type:"null"},toolResultJsonSchema.properties!.tool]}}}},{headers:{"Cache-Control":"no-store"}});
+    const files=job.kind==="extraction"&&!clientNote?await assistantFileList(admin,job.ownerId).catch(()=>[]):[];
+    return NextResponse.json({id,lease:job.lease,instructions:SYSTEM+"\n\n"+(clientNote?"呢段係同事提交嘅客戶紀錄。按原文用 update 整理，保留已發生嘅見客重點。只問仍然欠缺而影響寫入嘅資料，tool 填 null。":TOOL_INSTRUCTIONS)+(forceResearch?"\n本次必須先用工具核實官方來源；請輸出tool請求，唔可以重複拒絕上網或只講未核實。":""),input:JSON.stringify({today:job.today,latest_message:job.text || job.texts,pending_context:job.texts,conversation:job.probe==="assistant-tools-v1"?[{user:"我想比較醫療保費",assistant:"我目前無法即時上網。"}]:conversation,stored_schedule:context,files,tool_results:job.work?.observations||[],remaining_tool_steps:MAX_TOOL_STEPS-(job.work?.step||0)}),schema:{...extractionJsonSchema,required:[...extractionJsonSchema.required,"tool"],properties:{...extractionJsonSchema.properties,response:{...extractionJsonSchema.properties.response,properties:{...extractionJsonSchema.properties.response.properties,kind:{type:"string",enum:clientNote?["update"]:forceResearch?["tool"]:["chat","update","tool"]}}},tool:clientNote?{type:"null"}:forceResearch?researchToolJsonSchema(searchOnly):{anyOf:[{type:"null"},toolResultJsonSchema.properties!.tool]}}}},{headers:{"Cache-Control":"no-store"}});
   }catch{return NextResponse.json({error:"Queue unavailable"},{status:503});}
 }
 export async function POST(request:NextRequest){
@@ -100,7 +101,16 @@ export async function POST(request:NextRequest){
     }
     const agent=await resolveTelegramAgent(admin,job.from);
     if(!agent || agent.id!==job.ownerId){await finishJob(admin,id,revision,job,"failed");return new NextResponse("Binding changed",{status:409});}
+    const clientNote = isClientNote(job.text || job.texts);
+    const replyNoteFailed = () => deliverCoachReply(admin, job.ownerId, job.from, job.text,
+      "今次未能整理呢份見客資料，原文已保留。你可以回覆「呢份係見客資料」再試。", sendTelegramText, true);
+
     if(!failed && result && "tool" in result){
+      if (clientNote) {
+        await finishJob(admin,id,revision,job,"failed");
+        await replyNoteFailed();
+        return NextResponse.json({ok:true});
+      }
       // Consume this lease before executing an effect; retries must never send another document.
       await finishJob(admin,id,revision,job,"done");
       if((job.work?.step||0)>=MAX_TOOL_STEPS){await sendTelegramText(job.from,"暫時未能完成全部步驟；請講明要處理嘅產品或檔案，我再幫你。已完成嘅文件可喺File搵返。");return NextResponse.json({ok:true,limited:true});}
@@ -125,7 +135,10 @@ export async function POST(request:NextRequest){
       return NextResponse.json({ok:true});
     }
     if(job.work){
-      await finishJob(admin,id,revision,job,"failed");await sendTelegramText(job.from,"檔案或搜尋工作未能完成，未有改動客戶資料。請再講要處理嘅部分。");return NextResponse.json({ok:true});
+      await finishJob(admin,id,revision,job,"failed");
+      if (clientNote) await replyNoteFailed();
+      else await sendTelegramText(job.from,"檔案或搜尋工作未能完成，未有改動客戶資料。請再講要處理嘅部分。");
+      return NextResponse.json({ok:true});
     }
     const pending=await latestPending(admin,job.ownerId);
     const current=pending && (pending.draft.channel || "whatsapp")==="telegram"?pending.id:null;
@@ -135,7 +148,11 @@ export async function POST(request:NextRequest){
       return NextResponse.json({ok:true,stale:true});
     }
     await finishJob(admin,id,revision,job,failed?"failed":"done");
-    if(failed){await sendTelegramText(job.from,"暫時未能回應，請稍後再試。");return NextResponse.json({ok:true});}
+    if (failed) {
+      if (clientNote) await replyNoteFailed();
+      else await sendTelegramText(job.from,"暫時未能回應，請稍後再試。");
+      return NextResponse.json({ok:true});
+    }
     await processIncoming({from:job.from,messageId:job.messageId,type:"text",text:job.text},job.ownerId,admin,sendTelegramText,"telegram",{today:job.today,extract:async text=>{if(text!==job.texts)throw Error("Draft context changed");if(!result||"tool" in result)throw Error("Unexpected tool result");return result;}});
     return NextResponse.json({ok:true});
   }catch{console.error("Codex result delivery failed");return NextResponse.json({error:"Delivery uncertain; check latest draft before retrying"},{status:503});}

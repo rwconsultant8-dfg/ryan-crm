@@ -58,7 +58,7 @@ export async function verifyMomoPreviewRecipient(db: SupabaseClient) {
 }
 
 type Entry = { owner: string; time: string };
-type Update = { owner: string; status: "pending" | "applied" };
+type Update = { owner: string; status: "pending" | "clarify" | "applied" };
 const slots = new Map<string, string>(APPT_SLOTS.map((s) => [s.label, s.time.slice(0, 5)]));
 const byTime = (a: string, b: string) => (slots.get(a) ?? a).localeCompare(slots.get(b) ?? b);
 const clean = (name: string) => name.replace(/[\s\u202A-\u202E\u2066-\u2069]+/gu, " ").trim().slice(0, 45) || "同事";
@@ -71,10 +71,10 @@ export function renderMorningBrief(day: string, staff: Map<string, string>, appo
     times.add(a.time);
     schedule.set(a.owner, times);
   }
-  const statuses = new Map<string, { pending: number; applied: number }>();
+  const statuses = new Map<string, { pending: number; clarify: number; applied: number }>();
   for (const u of updates) {
     if (!staff.has(u.owner)) continue;
-    const counts = statuses.get(u.owner) ?? { pending: 0, applied: 0 };
+    const counts = statuses.get(u.owner) ?? { pending: 0, clarify: 0, applied: 0 };
     counts[u.status]++;
     statuses.set(u.owner, counts);
   }
@@ -89,7 +89,7 @@ export function renderMorningBrief(day: string, staff: Map<string, string>, appo
     const sorted = [...times].sort(byTime);
     return `${name(id)}：${sorted.slice(0, 6).join("、")}${sorted.length > 6 ? "等" : ""}`;
   });
-  const u = [...statuses].map(([id, c]) => `${name(id)}：${[c.applied && `${c.applied} 項已入 CRM`, c.pending && `${c.pending} 項待同事確認`].filter(Boolean).join("、")}`);
+  const u = [...statuses].map(([id, c]) => `${name(id)}：${[c.applied && `${c.applied} 項已入 CRM`, c.pending && `${c.pending} 項待同事確認`, c.clarify && `${c.clarify} 項待同事補資料`].filter(Boolean).join("、")}`);
   return [
     `Ryan，${day} ZEST 團隊更新${test ? "（試發）" : ""}`,
     `今日約見\n${list(a, "CRM 暫未有約見記錄。")}`,
@@ -128,7 +128,8 @@ export async function loadMorningBrief(db: SupabaseClient, day: string, now: num
     if (!staff.has(row.owner_id) || /^(codex-job-v1|coach-action-v1)\./.test(row.payload)) continue;
     const draft = openDraft(row.id, row.payload);
     if (draft.channel === "telegram" && (row.status === "pending" || row.status === "applied")) {
-      updates.push({ owner: row.owner_id, status: row.status });
+      const status = row.status === "pending" && draft.extraction?.clarification?.trim() ? "clarify" : row.status;
+      updates.push({ owner: row.owner_id, status });
     }
   }
   return renderMorningBrief(day, staff, appointments, updates, test);

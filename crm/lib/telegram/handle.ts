@@ -4,6 +4,7 @@ import { processIncoming, type Incoming } from "../whatsapp/handle";
 import { resolveTelegramAgent } from "./registry";
 import { downloadTelegramFile, sendTelegramText, sendTelegramDocument, reactTelegramMessage } from "./transport";
 import { resolveCoachToken } from "./credentials";
+import { recoverCoachNote } from "./conversation";
 import { fileScope, saveBotFile, readBotFile, listBotFiles } from "./files";
 
 export async function handleTelegramIncoming(message: Incoming) {
@@ -38,8 +39,10 @@ export async function handleTelegramIncoming(message: Incoming) {
   if (/^\/files(?:@\w+)?$/i.test(text)) return sendTelegramText(message.from, `${process.env.APP_URL || "https://ryan-crm-chi.vercel.app"}/files\n登入後只會顯示你自己嘅檔案。`);
   if (/^\/start(?:@\w+)?(?:\s.*)?$|^\/help(?:@\w+)?$/i.test(text)) message = { ...message, text: "幫助" };
   else if (!/^(確認|确认|confirm|ok|yes|1|取消|cancel|no|2)$/i.test(text)) {
-    try { await saveBotFile(admin, scope, `訊息-${new Date().toISOString().replace(/[:.]/g,"-")}.txt`, Buffer.from(text)); }
+    const recovered = await recoverCoachNote(admin, agent.id, text).catch(() => null);
+    try { await saveBotFile(admin, scope, `訊息-${new Date().toISOString().replace(/[:.]/g,"-")}.txt`, Buffer.from(recovered ?? text)); }
     catch { return sendTelegramText(message.from, "暫時未能處理呢段訊息，請稍後再試。"); }
+    if (recovered) message = { ...message, text: recovered };
   }
   await processIncoming(message, agent.id, admin, sendTelegramText, "telegram");
 }

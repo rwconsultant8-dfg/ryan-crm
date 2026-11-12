@@ -44,11 +44,12 @@ describe("Ryan Telegram brief", () => {
     ] as Parameters<typeof renderMorningBrief>[2], [
       { owner: "b", status: "applied", sourceText: "private details" },
       { owner: "b", status: "pending" },
+      { owner: "b", status: "clarify" },
       { owner: "inactive", status: "pending" },
     ] as Parameters<typeof renderMorningBrief>[3], true);
     expect(result).toContain("（試發）");
     expect(result).toContain("Ada：上午、16:00");
-    expect(result).toContain("Ben：1 項已入 CRM、1 項待同事確認");
+    expect(result).toContain("Ben：1 項已入 CRM、1 項待同事確認、1 項待同事補資料");
     expect(result).not.toMatch(/private|09:11/);
     expect(result.split("\n").slice(-3)).toEqual([
       "團隊日曆：https://ryan-crm-chi.vercel.app/activity",

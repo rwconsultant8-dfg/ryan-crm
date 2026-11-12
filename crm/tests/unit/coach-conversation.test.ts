@@ -5,7 +5,7 @@ vi.mock("@/lib/whatsapp/drafts", () => ({ latestPending: mocks.latest, setStatus
 vi.mock("@/lib/whatsapp/named-clients", () => ({ ensureNamedClients: mocks.named }));
 vi.mock("@/lib/telegram/files", () => ({ fileScope: (kind: string, owner: string) => `${kind}/${owner}`, listBotFiles: mocks.list, readBotFile: mocks.read, saveBotFile: mocks.save }));
 import { processIncoming } from "@/lib/whatsapp/handle";
-import { deliverCoachReply, loadCoachConversation, savedCoachReply } from "@/lib/telegram/conversation";
+import { deliverCoachReply, loadCoachConversation, recoverCoachNote, savedCoachReply } from "@/lib/telegram/conversation";
 import { conversationProbePassed } from "@/lib/codex/conversation-probe";
 
 const empty = (): Extraction => ({ client: { name: "", age: "", gender: "", occupation: "", marital: "" }, fields: [], checks: [], stage: "", season: "", activity: { r: 0, n: 0, a: 0, rr: 0, nr: 0, pc: 0 }, appointment: { slot: "", text: "" }, date: "2026-11-09", summary: "", tasks: [], response: { kind: "chat", text: "7 × 8 = 56。\nMary，多謝你今日抽時間同我傾！" } });
@@ -52,4 +52,23 @@ describe("同事普通 AI 問答", () => {
     const bad = empty(); bad.client.name = "Mary"; expect(conversationProbePassed(bad)).toBe(false);
     const wrong = empty(); wrong.response!.text = "7乘8係54"; expect(conversationProbePassed(wrong)).toBe(false);
   });
+});
+
+it("reuses only the staff member’s most recent failed note after an explicit follow-up", async () => {
+  const admin = {} as never;
+  const note = "Ada，任職老師。琴日同佢見面整理收入同家用。佢鍾意行山，有傾保障同儲蓄，未定下一步，會之後再聯絡。";
+  const previous = { key: "raw", name: "訊息-previous.txt", created_at: new Date(Date.now()-1000).toISOString() };
+  const failed = { key: "failed", name: "AI對話-failed.json", created_at: new Date().toISOString() };
+  mocks.list.mockResolvedValue([failed, previous]);
+  mocks.read.mockImplementation(async (_admin, _scope, key) => ({
+    body: Buffer.from(key === "failed" ? JSON.stringify({ user: note, failedNote: true }) : note),
+  }));
+  expect(await recoverCoachNote(admin, "staff-a", "呢一個係見客嘅資料")).toBe(note);
+  expect(await recoverCoachNote(admin, "staff-a", "請查官方保費")).toBeNull();
+  expect(mocks.read.mock.calls.every((call) => call[1] === "coach/staff-a")).toBe(true);
+  mocks.list.mockResolvedValue([{ ...failed, key: "success" }, previous]);
+  mocks.read.mockImplementation(async (_admin, _scope, key) => ({
+    body: Buffer.from(key === "success" ? JSON.stringify({ user: note, assistant: "已記低。" }) : note),
+  }));
+  expect(await recoverCoachNote(admin, "staff-a", "呢份係見客資料")).toBeNull();
 });

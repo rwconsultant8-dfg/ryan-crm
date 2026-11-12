@@ -3,6 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { fileScope, listBotFiles, readBotFile, saveBotFile } from "./files";
 import type { Draft } from "../whatsapp/apply";
 import {appointmentTimeLabel} from "../activity";
+import {isClientNote} from "../assistant/schema";
+import {hkToday} from "../weeks";
 
 export type CoachTurn = { user: string; assistant: string };
 
@@ -21,10 +23,35 @@ export async function loadCoachConversation(admin: SupabaseClient, ownerId: stri
   return turns.filter((turn): turn is CoachTurn => turn !== null);
 }
 
-export async function deliverCoachReply(admin: SupabaseClient, ownerId: string, to: string, user: string, answer: string, send: (to: string, text: string) => Promise<void>) {
+const noteFollowup = /^(?:呢(?:一)?[個份段]|頭先嗰[個份段]|上面嗰[個份段])(?:就)?係(?:客戶|見客)(?:嘅)?(?:資料|紀錄|記錄)[。！!]*$/;
+
+export async function recoverCoachNote(admin: SupabaseClient, ownerId: string, text: string): Promise<string | null> {
+  if (!noteFollowup.test(text.trim())) return null;
+  const scope = fileScope("coach", ownerId);
+  const files = await listBotFiles(admin, scope);
+  const lastTurn = files.find((file) => file.name.startsWith("AI對話-"));
+  const lastMessage = files.find((file) => file.name.startsWith("訊息-"));
+  if (!lastTurn || !lastMessage) return null;
+
+  const messageAt = Date.parse(lastMessage.created_at || "");
+  const replyAt = Date.parse(lastTurn.created_at || "");
+  const now = Date.now();
+  if (!Number.isFinite(messageAt) || !Number.isFinite(replyAt) || replyAt < messageAt ||
+      now - messageAt > 30 * 60_000 || hkToday(messageAt) !== hkToday(now)) return null;
+
+  const [replyFile, messageFile] = await Promise.all([
+    readBotFile(admin, scope, lastTurn.key),
+    readBotFile(admin, scope, lastMessage.key),
+  ]);
+  const turn = JSON.parse(replyFile.body.toString());
+  const original = messageFile.body.toString().trim().slice(0, 4000);
+  return turn?.failedNote === true && turn.user === original && isClientNote(original) ? original : null;
+}
+
+export async function deliverCoachReply(admin: SupabaseClient, ownerId: string, to: string, user: string, answer: string, send: (to: string, text: string) => Promise<void>, failedNote = false) {
   const reply = answer.trim().slice(0, 3000) || "可以講多少少，你想我幫你處理邊一部分？";
   try {
-    await saveBotFile(admin, fileScope("coach", ownerId), `AI對話-${new Date().toISOString()}.json`, Buffer.from(JSON.stringify({ user: user.slice(0, 4000), assistant: reply })), "application/json");
+    await saveBotFile(admin, fileScope("coach", ownerId), `AI對話-${new Date().toISOString()}.json`, Buffer.from(JSON.stringify({ user: user.trim().slice(0, 4000), assistant: reply, ...(failedNote ? { failedNote: true } : {}) })), "application/json");
   } catch { console.error("Coach conversation storage unavailable"); }
   await send(to, reply);
 }

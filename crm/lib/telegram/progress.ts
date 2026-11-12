@@ -1,5 +1,8 @@
+import { isClientNote } from "../assistant/schema";
+
 /** Rough processing ranges, not a completion deadline. */
 export function processingEstimate(text:string):string|null {
+  if (isClientNote(text)) return null;
   const request=text.replace(/\[本次上傳檔案：[\s\S]*?\]/g,'');
   const document=/(?:OCR|掃描|辨認|識別|填表|填寫.*(?:表格|PDF)|(?:改|修改|翻譯|整理|處理).*(?:PowerPoint|PPTX?|簡報|PDF|Excel|XLSX?|文件)|(?:PowerPoint|PPTX?|簡報|PDF|Excel|XLSX?).*(?:改|修改|翻譯|整理|處理))/i.test(request);
   if(document)return '🛠️ 預計約 3–8 分鐘，實際視文件大小同內容而定。';

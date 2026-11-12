@@ -51,11 +51,12 @@ export default async function UpdatesPage() {
         {cards.length === 0 && <p className={styles.empty}>暫時未有更新</p>}
         {cards.map(update => {
           const { draft } = update, target = draft.target;
+          const clarification = draft.extraction.clarification?.trim();
           const client = target.mode === "existing" || target.mode === "new" ? target : null;
           return <article className={`card ${styles.update}`} key={update.id}><strong>{owners.get(update.owner_id) || "同事"}</strong><p className="small muted"><time dateTime={update.created_at}>{new Date(update.created_at).toLocaleString("zh-HK", { timeZone: "Asia/Hong_Kong", hour12: false })}</time></p><h3>{client?.name || (draft.extraction.tasks?.length ? "工作安排更新" : "日曆／跟進更新")}</h3>
-            <div className={styles.preview}>{describeDraft(draft).replace(/^(?:📝 )?幫你整理咗（未儲存）：\n+/, "").replace(/\n回覆「確認」.*$/s, "")}</div>
+            <div className={styles.preview}>{clarification || describeDraft(draft).replace(/^(?:📝 )?幫你整理咗（未儲存）：\n+/, "").replace(/\n回覆「確認」.*$/s, "")}</div>
             <details><summary>查看同事原文</summary><p className={styles.preview}>{draft.texts.join("\n\n")}</p></details>
-            {update.status === "pending" && (update.owner_id === profile.id ? <DraftButtons id={update.id}/> : <p className="small muted">等提交嘅同事確認。</p>)}
+            {update.status === "pending" && (clarification ? <p className="small muted">等提交嘅同事補資料。</p> : update.owner_id === profile.id ? <DraftButtons id={update.id}/> : <p className="small muted">等提交嘅同事確認。</p>)}
             {update.status === "applied" && <div className="row">{client && <Link href={`/clients/${client.id}`}>打開客戶檔案 ↗</Link>}{draft.extraction.tasks?.length ? <Link href={`/today${teamView && update.owner_id !== profile.id ? `?agent=${update.owner_id}` : ""}`}>查看工作安排 ↗</Link> : null}</div>}
           </article>;
         })}

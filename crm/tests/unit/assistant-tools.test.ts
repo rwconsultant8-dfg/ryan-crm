@@ -1,10 +1,11 @@
 import {describe,it,expect,vi,afterEach} from 'vitest';
 import JSZip from 'jszip';
-import {toolResultSchema,toolResultJsonSchema,verificationRequired,needsResearch,researchSourceMissing} from '@/lib/assistant/schema';
+import {toolResultSchema,toolResultJsonSchema,verificationRequired,needsResearch,researchSourceMissing,isClientNote} from '@/lib/assistant/schema';
 import {publicAddress,publicUrl,htmlLinks} from '@/lib/assistant/web';
 import {editPresentation,inspectOffice,fillWorkbook} from '@/lib/assistant/office';
 import {fillPdf} from '@/lib/assistant/pdf';
 import {PDFDocument} from 'pdf-lib';
+import {processingEstimate} from '@/lib/telegram/progress';
 import {sourceReply} from '@/lib/assistant/execute';
 
 describe('Assistant tool boundaries',()=>{
@@ -60,3 +61,14 @@ describe('Real comparison research dispatch',()=>{it('requires research for prod
  expect(researchSourceMissing(question,work)).toBe(true);work.observations.push({tool:'open_url',ok:true,data:{},sources:[{title:'Sun Life',url:'https://www.sunlife.com.hk/'}]});expect(researchSourceMissing(question,work)).toBe(false);
  expect(needsResearch('記低Mary今日FWD保單已簽單')).toBe(false);
 });});
+
+it("routes factual meeting notes locally even when they mention comparisons and insurance", () => {
+  const note = "Ada，任職老師。\n琴日用表格整理收入開支。人工24000，學校對比之前多啲，家用每月7000。\n興趣睇演唱會。曾投保被拒，見面有傾保障同儲蓄。";
+  expect(isClientNote(note)).toBe(true);
+  expect(needsResearch(note)).toBe(false);
+  expect(verificationRequired(note, "已整理見客資料。")).toBe(false);
+  expect(processingEstimate(note)).toBeNull();
+  expect(needsResearch("公司人工對比上年有變。\n同客戶傾過保障。")).toBe(false);
+  expect(isClientNote(note + "\n幫我查資料，比較兩份保費。")).toBe(false);
+  expect(needsResearch(note + "\n幫我查資料，比較兩份保費。")).toBe(true);
+});
