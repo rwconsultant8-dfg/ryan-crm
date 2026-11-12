@@ -70,7 +70,7 @@ export async function processIncoming(
   admin: ReturnType<typeof createAdminClient>,
   sendText: (to: string, text: string) => Promise<void>,
   channel: "telegram" | "whatsapp" = "whatsapp",
-  resolved?: { extract: (text:string,today:string)=>Promise<Extraction>; today:string },
+  resolved?: { extract: (text:string,today:string)=>Promise<Extraction>; today:string; standalone?:boolean },
 ): Promise<void> {
   const text = msg.text.trim().slice(0, 4000);
   const deliverText=sendText;
@@ -107,7 +107,7 @@ export async function processIncoming(
   }
 
   // 新內容（或者補充上一份未確認嘅內容）
-  const recent = pending && Date.now() - new Date(pending.created_at).getTime() < MERGE_WINDOW_MS ? pending : null;
+  const recent = !resolved?.standalone && pending && Date.now() - new Date(pending.created_at).getTime() < MERGE_WINDOW_MS ? pending : null;
   const texts = [...(recent?.draft.texts ?? []), text];
   const today = resolved?.today || hkToday();
   if (channel === "telegram" && codexMode() && !resolved) {

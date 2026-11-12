@@ -6,6 +6,8 @@ import {loadSchedulingContext} from "@/lib/whatsapp/scheduling-context";
 import {SYSTEM} from "@/lib/whatsapp/ai";
 import {extractionJsonSchema,assistantResultSchema} from "@/lib/whatsapp/schema";
 import {processIncoming} from "@/lib/whatsapp/handle";
+import {loadClientNames,matchClient} from "@/lib/whatsapp/apply";
+import {queueNoteRecovery,recoveryMatches} from "@/lib/codex/note-recovery";
 import {latestPending} from "@/lib/whatsapp/drafts";
 import {resolveTelegramAgent} from "@/lib/telegram/registry";
 import {ROUTING_PROBE_ID,ROUTING_PROBE_TEXT,routingProbePassed} from "@/lib/codex/routing-probe";
@@ -62,12 +64,13 @@ export async function GET(request:NextRequest){
       const {data:owner}=await admin.from("profiles").select("id").eq("role","admin").eq("active",true).limit(1).maybeSingle();
       if(owner)await enqueueJob(admin,{kind:"health",probe:"assistant-tools-v1",ownerId:owner.id,from:"",messageId:ASSISTANT_PROBE_ID,text:ASSISTANT_PROBE_TEXT,texts:ASSISTANT_PROBE_TEXT,today:hkToday(),expectedDraftId:null});
     }
+    try{await queueNoteRecovery(admin);}catch{console.error("Original Telegram note recovery unavailable");}
     const claimed=await claimJob(admin);
     if(!claimed)return new NextResponse(null,{status:204});
     const {id,job}=claimed;
     const [context,conversation]=job.kind==="extraction"?await Promise.all([
-      job.work?Promise.resolve(undefined):loadSchedulingContext(admin,job.ownerId,job.today),
-      loadCoachConversation(admin,job.ownerId).catch(()=>[]),
+      (job.work || job.recoveryNameHash)?Promise.resolve(undefined):loadSchedulingContext(admin,job.ownerId,job.today),
+      job.recoveryNameHash ? Promise.resolve([]) : loadCoachConversation(admin,job.ownerId).catch(()=>[]),
     ]):[undefined,[]];
     const clientNote = isClientNote(job.text || job.texts);
     const forceResearch=!clientNote&&(job.kind==="extraction"||job.probe==="assistant-tools-v1")&&researchSourceMissing(job.text||job.texts,job.work);
@@ -101,6 +104,29 @@ export async function POST(request:NextRequest){
     }
     const agent=await resolveTelegramAgent(admin,job.from);
     if(!agent || agent.id!==job.ownerId){await finishJob(admin,id,revision,job,"failed");return new NextResponse("Binding changed",{status:409});}
+    if (job.recoveryNameHash) {
+      const pending = await latestPending(admin, job.ownerId);
+      const current = pending?.draft.channel === "telegram" ? pending.id : null;
+      const extraction = !failed && result && !("tool" in result) ? result : null;
+      if (current !== job.expectedDraftId || !extraction || !recoveryMatches(extraction, job.recoveryNameHash) ||
+          matchClient(extraction.client.name, await loadClientNames(admin, job.ownerId)).mode !== "new") {
+        await finishJob(admin, id, revision, job, "failed");
+        console.info("Original Telegram note recovery stopped");
+        return NextResponse.json({ok:true});
+      }
+
+      await finishJob(admin, id, revision, job, "done");
+      await processIncoming({from:job.from,messageId:job.messageId,type:"text",text:job.text},job.ownerId,admin,
+        async () => {}, "telegram", {
+          today: job.today, standalone: true,
+          extract: async (text) => {
+            if (text !== job.texts) throw Error("Recovery source changed");
+            return extraction;
+          },
+        });
+      console.info("Original Telegram note recovery processed");
+      return NextResponse.json({ok:true});
+    }
     const clientNote = isClientNote(job.text || job.texts);
     const replyNoteFailed = () => deliverCoachReply(admin, job.ownerId, job.from, job.text,
       "今次未能整理呢份見客資料，原文已保留。你可以回覆「呢份係見客資料」再試。", sendTelegramText, true);

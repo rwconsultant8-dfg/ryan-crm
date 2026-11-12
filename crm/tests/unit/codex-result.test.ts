@@ -1,3 +1,4 @@
+import {createHash} from "node:crypto";
 import {NextRequest} from "next/server";
 import {beforeEach,afterEach,describe,it,expect,vi} from "vitest";
 const m=vi.hoisted(()=>({claim:vi.fn(),finish:vi.fn(),resolve:vi.fn(),latest:vi.fn(),process:vi.fn(),send:vi.fn(),admin:vi.fn(),syncName:vi.fn(),execute:vi.fn(),enqueue:vi.fn()}));
@@ -83,4 +84,15 @@ it("rejects a web tool returned for a private factual note before execution", as
   expect((await POST(request({id,lease,result}))).status).toBe(200);
   expect(m.execute).not.toHaveBeenCalled();
   expect(m.send).toHaveBeenCalledWith("12345",expect.stringContaining("原文已保留"));
+});
+
+it("stops a recovered note when the worker proposes a different client", async () => {
+  const recovery = {...job,recoveryNameHash:createHash("sha256").update("ada").digest("hex")};
+  m.claim.mockResolvedValue({job:recovery,revision:"r"});
+  const incorrect = {...result,client:{...result.client,name:"Ben"},response:{kind:"update",text:""}};
+  expect((await POST(request({id,lease,result:incorrect}))).status).toBe(200);
+  expect(m.process).not.toHaveBeenCalled();
+  expect(m.execute).not.toHaveBeenCalled();
+  expect(m.send).not.toHaveBeenCalled();
+  expect(m.finish).toHaveBeenCalledWith(expect.anything(),id,"r",recovery,"failed");
 });
