@@ -11,7 +11,7 @@ export function workerAuthorized(header:string|null) {
   const supplied=Buffer.from(header.slice(7)),expected=Buffer.from(secret);
   return supplied.length===expected.length && timingSafeEqual(supplied,expected);
 }
-export type Job = {kind:"extraction"|"health";ownerId:string;from:string;messageId:string;text:string;texts:string;today:string;expectedDraftId:string|null;recoveryNameHash?:string;work?:WorkState;probeReport?:{passed:boolean;answer:string;tools:string[]};probe?:"assistant-tools-v1"|"field-routing-v2"|"meeting-coach-v3"|"schedule-v1"|"reschedule-v1"|"conversation-v1";state?:"pending"|"running"|"done"|"failed";lease?:string;leaseUntil?:number;updated?:number};
+export type Job = {kind:"extraction"|"health";ownerId:string;from:string;messageId:string;text:string;texts:string;today:string;expectedDraftId:string|null;work?:WorkState;probeReport?:{passed:boolean;answer:string;tools:string[]};probe?:"assistant-tools-v1"|"field-routing-v2"|"meeting-coach-v3"|"schedule-v1"|"reschedule-v1"|"conversation-v1";state?:"pending"|"running"|"done"|"failed";lease?:string;leaseUntil?:number;updated?:number};
 const prefix="codex-job-v1.";
 const nextRevision=(old:string|null|undefined)=>new Date(Math.max(Date.now(),old?new Date(old).getTime()+1:0)).toISOString();
 const key=()=>parseKey(process.env.DATA_ENCRYPTION_KEY);
