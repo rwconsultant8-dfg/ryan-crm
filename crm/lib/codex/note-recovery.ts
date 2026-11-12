@@ -108,12 +108,15 @@ export async function completeExpiredNoteRecovery(db: SupabaseClient, authorizat
   if (Date.now() - Date.parse(config.sentAt) > 6 * 3600_000) return "expired";
 
   const id = jobId(`telegram-note-recovery:${config.owner}:${config.sentAt}`);
-  const { data, error } = await db.from("wa_drafts").select("payload,decided_at").eq("id", id).eq("owner_id", config.owner).maybeSingle();
+  const { data, error } = await db.from("wa_drafts").select("payload,decided_at,created_at").eq("id", id).eq("owner_id", config.owner).maybeSingle();
   if (error) throw Error("Could not read recovery");
   if (!data) return "not_queued";
   const job = openJob(id, data.payload);
   if (job.ownerId !== config.owner || job.recoveryNameHash !== config.nameHash) return "source_mismatch";
-  if (job.state !== "failed" && (job.state !== "running" || !job.leaseUntil || job.leaseUntil >= Date.now())) return job.state || "pending";
+  // Retries renew the lease. Allow the reviewed path after the initial wait budget;
+  // finishJob compares the observed revision, so only one path can apply the note.
+  const waitExpired = Date.now() - Date.parse(data.created_at) >= 10 * 60_000;
+  if (job.state !== "failed" && (job.state !== "running" || !waitExpired)) return job.state || "pending";
 
   const extraction = extractReviewedNote(job.text, job.today);
   if (!extraction || !recoveryMatches(extraction, config.nameHash)) return "review_mismatch";
