@@ -62,9 +62,14 @@ export function factFindingChecklist(info: Record<string, string | undefined>, f
     ["name", "姓名"], ["age", "年齡"], ["gender", "性別"],
     ["occupation", "職業"], ["marital", "婚姻狀況"], ["customer_type", "客戶類別"],
   ].map(([key, label]) => ({ key: `info.${key}`, label, complete: Boolean(info[key]?.trim()) }));
-  const details = factFindingSections.flatMap((section) => section.fields).map((field) => ({
-    key: `form_rr.${field.key}`, label: field.label, complete: Boolean(forms.form_rr[field.key]?.trim()),
-  }));
+  const details = factFindingSections
+    .flatMap((section) => section.fields)
+    .filter((field) => field.key !== "needs")
+    .map((field) => ({
+      key: `form_rr.${field.key}`,
+      label: field.label.replace(/^\d+\)\s*/, ""),
+      complete: Boolean(forms.form_rr[field.key]?.trim()),
+    }));
   return [...basic, ...details];
 }
 
