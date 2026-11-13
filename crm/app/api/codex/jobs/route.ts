@@ -21,6 +21,7 @@ import {ASSISTANT_PROBE_ID,ASSISTANT_PROBE_TEXT} from "@/lib/assistant/health";
 import {toolResultSchema,toolResultJsonSchema,TOOL_INSTRUCTIONS,MAX_TOOL_STEPS,verificationRequired,researchSourceMissing,researchToolJsonSchema,isClientNote,needsResearch} from "@/lib/assistant/schema";
 import {runResearchProbe,researchProbeReport} from "@/lib/assistant/research-probe";
 import {assistantSmokeCheck} from "@/lib/assistant/smoke";
+import {PA_PROBE_ID,PA_PROBE_QUESTION,paJobAuthorized,paWorkerInput,deliverPAReply,paProbePassed} from "@/lib/telegram/pa-codex";
 import {assistantFileList,executeTool,sourceReply} from "@/lib/assistant/execute";
 export const dynamic="force-dynamic";
 export const maxDuration=300;
@@ -62,9 +63,21 @@ export async function GET(request:NextRequest){
       const {data:owner}=await admin.from("profiles").select("id").eq("role","admin").eq("active",true).limit(1).maybeSingle();
       if(owner)await enqueueJob(admin,{kind:"health",probe:"assistant-tools-v1",ownerId:owner.id,from:"",messageId:ASSISTANT_PROBE_ID,text:ASSISTANT_PROBE_TEXT,texts:ASSISTANT_PROBE_TEXT,today:hkToday(),expectedDraftId:null});
     }
+    const {data:paCheck,error:paError}=await admin.from("wa_drafts").select("id").eq("id",jobId(PA_PROBE_ID)).maybeSingle();
+    if(!paError && !paCheck){
+      const {data:owner}=await admin.from("profiles").select("id").eq("role","admin").eq("active",true).limit(1).maybeSingle();
+      if(owner)await enqueueJob(admin,{kind:"health",probe:"pa-chat-v1",ownerId:owner.id,from:"",messageId:PA_PROBE_ID,text:PA_PROBE_QUESTION,texts:PA_PROBE_QUESTION,today:"2026-11-16",expectedDraftId:null});
+    }
     const claimed=await claimJob(admin);
     if(!claimed)return new NextResponse(null,{status:204});
-    const {id,job}=claimed;
+    const {id,job,revision}=claimed;
+    if(job.kind==="pa" || job.probe==="pa-chat-v1"){
+      if(job.kind==="pa" && !await paJobAuthorized(admin,job)){
+        await finishJob(admin,id,revision,job,"failed");
+        return new NextResponse(null,{status:204});
+      }
+      return NextResponse.json(await paWorkerInput(admin,id,job),{headers:{"Cache-Control":"no-store"}});
+    }
     const latest = job.text || job.texts;
     const clientNote = isClientNote(latest);
     const [context,conversation] = job.kind === "extraction" ? await Promise.all([
@@ -124,6 +137,26 @@ export async function POST(request:NextRequest){
   const {job,revision}=claim;
   // Finish the claim before any outgoing preview. An uncertain delivery is never auto-replayed.
   try{
+    const paAnswer=!failed && result && !("tool" in result) && result.response?.kind==="chat" ? result.response.text.trim() : undefined;
+    if(job.kind==="health" && job.probe==="pa-chat-v1"){
+      const passed=paProbePassed(paAnswer);
+      await finishJob(admin,id,revision,job,passed?"done":"failed");
+      console.info(`Codex pa-chat-v1 check ${passed?"passed":"failed"}`);
+      return NextResponse.json({ok:true});
+    }
+    if(job.kind==="pa"){
+      if(!await paJobAuthorized(admin,job)){
+        await finishJob(admin,id,revision,job,"failed");
+        return new NextResponse("Binding changed",{status:409});
+      }
+      await finishJob(admin,id,revision,job,paAnswer?"done":"failed");
+      if(!paAnswer && !job.retry){
+        await enqueueJob(admin,{...job,messageId:`${job.messageId}:retry`,retry:true,state:"pending",lease:undefined,leaseUntil:undefined});
+        return NextResponse.json({ok:true,retry:true});
+      }
+      await deliverPAReply(admin,job,paAnswer);
+      return NextResponse.json({ok:true});
+    }
     if(job.kind==="health"){
       if(job.probe==="assistant-tools-v1")return NextResponse.json(await runResearchProbe(admin,id,revision,job,result,failed));
       const extraction=result && !("tool" in result)?result:undefined;

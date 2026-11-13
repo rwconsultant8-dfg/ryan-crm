@@ -10,14 +10,14 @@ import { decryptColumn } from "../secure";
 import { prepareTasks, taskMessageSchema } from "./tasks";
 import { sendText } from "./send";
 import { aiFailureInfo } from "../ai-errors";
-import { codexMode, enqueueJob, cancelOwnerJobs } from "../codex/jobs";
+import { enqueueJob, cancelOwnerJobs } from "../codex/jobs";
 import { ensureNamedClients } from "./named-clients";
 import { loadSchedulingContext } from "./scheduling-context";
 import {hasClientFacts} from "./content";
 import {continuesTelegramDraft} from "../telegram/draft-context";
 import {queuedAcknowledgement} from "../telegram/progress";
 import type { Extraction } from "./schema";
-import { deliverCoachReply, loadCoachConversation, savedCoachReply } from "../telegram/conversation";
+import { deliverCoachReply, savedCoachReply } from "../telegram/conversation";
 
 export type Incoming = { from: string; messageId: string; type: string; text: string; fileId?:string;fileName?:string;mimeType?:string;fileSize?:number;telegramMessageId?:number;quotedText?:string };
 
@@ -110,7 +110,7 @@ export async function processIncoming(
   }
 
   if (CANCEL.test(text)) {
-    const queued=!quotedAction && channel==="telegram" && codexMode() ? await cancelOwnerJobs(admin,ownerId) : false;
+    const queued=!quotedAction && channel==="telegram" ? await cancelOwnerJobs(admin,ownerId) : false;
     if (pending && (await setStatus(admin, pending.id, "cancelled"))) return sendText(msg.from, "已取消今次待確認更新。");
     return sendText(msg.from, queued ? "已取消今次處理。" : "冇未確認嘅內容。");
   }
@@ -126,7 +126,7 @@ export async function processIncoming(
   const recent = olderContext.length ? (resolved?.draftContext ? pending : openRecent) : null;
   const texts = [...olderContext, text];
   const today = resolved?.today || hkToday();
-  if (channel === "telegram" && codexMode() && !resolved) {
+  if (channel === "telegram" && !resolved) {
     try { await enqueueJob(admin, {kind:"extraction",ownerId,from:msg.from,messageId:msg.messageId,text,texts: texts.join("\n\n"),today,expectedDraftId:pending?.id || null,
       draftContext:olderContext,telegramMessageId:msg.telegramMessageId,receivedAt:Date.now(),quotedText:msg.quotedText}); }
     catch { return sendText(msg.from,"暫時未能處理，請稍後再試。"); }
@@ -140,11 +140,8 @@ export async function processIncoming(
     extraction = resolved
       ? await resolved.extract(texts.join("\n\n"),today)
       : await (async () => {
-        const [schedule, conversation] = await Promise.all([
-          loadSchedulingContext(admin, ownerId, today),
-          channel === "telegram" ? loadCoachConversation(admin, ownerId).catch(() => []) : Promise.resolve([]),
-        ]);
-        return extractFromMessage(texts.join("\n\n"), today, { ...schedule, latest_message: text, quoted_reply: msg.quotedText, conversation });
+        const schedule = await loadSchedulingContext(admin, ownerId, today);
+        return extractFromMessage(texts.join("\n\n"), today, { ...schedule, latest_message: text, quoted_reply: msg.quotedText, conversation: [] });
       })();
   } catch (e) {
     const issue=aiFailureInfo(e);

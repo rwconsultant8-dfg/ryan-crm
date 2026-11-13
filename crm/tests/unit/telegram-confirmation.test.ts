@@ -17,14 +17,15 @@ describe("Telegram explicit confirmation", () => {
     mocks.extract.mockResolvedValue({ tasks: [], client: { name: "" }, date: "2026-11-06" });
     mocks.seal.mockReturnValue("encrypted-draft");
     const insert = vi.fn().mockResolvedValue({ error: null }); admin.from.mockReturnValue({ insert });
-    await processIncoming(message("今日同客食早餐"), "staff-a", admin as never, send, "telegram");
+    await processIncoming(message("今日同客食早餐"), "staff-a", admin as never, send, "telegram", {today:"2026-11-06",extract:mocks.extract});
     expect(insert).toHaveBeenCalledWith(expect.objectContaining({ owner_id: "staff-a", payload: "encrypted-draft" }));
     expect(mocks.seal).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ channel: "telegram" }));
     expect(mocks.apply).toHaveBeenCalledOnce();
     expect(send).toHaveBeenCalledWith("123456789", "已幫你記低，可以喺 app 睇返。");
   });
-  it("queues Codex work without invoking paid extraction or applying a customer record",async()=>{
-    vi.stubEnv("AI_MODE","codex");vi.stubEnv("DATA_ENCRYPTION_KEY",Buffer.alloc(32,12).toString("base64"));
+  it("queues Codex work regardless of the old model setting",async()=>{
+    vi.stubEnv("AI_MODE","legacy-model");
+    vi.stubEnv("DATA_ENCRYPTION_KEY",Buffer.alloc(32,12).toString("base64"));
     const insert=vi.fn().mockResolvedValue({error:null});admin.from.mockReturnValue({insert});
     await processIncoming(message("今日同客食早餐"),"staff-a",admin as never,send,"telegram");
     expect(insert).toHaveBeenCalledWith(expect.objectContaining({owner_id:"staff-a",status:"cancelled",payload:expect.stringMatching(/^codex-job-v1\.pending\./)}));
@@ -32,7 +33,7 @@ describe("Telegram explicit confirmation", () => {
     expect(send).not.toHaveBeenCalled();
   });
   it("gives a rough time range for document work while keeping simple acknowledgements short",async()=>{
-    vi.stubEnv("AI_MODE","codex");vi.stubEnv("DATA_ENCRYPTION_KEY",Buffer.alloc(32,12).toString("base64"));
+    vi.stubEnv("DATA_ENCRYPTION_KEY",Buffer.alloc(32,12).toString("base64"));
     admin.from.mockReturnValue({insert:vi.fn().mockResolvedValue({error:null})});
     await processIncoming(message("幫我修改PowerPoint，翻譯成中文"),"staff-a",admin as never,send,"telegram");
     expect(send).toHaveBeenCalledWith("123456789",expect.stringContaining("預計約 3–8 分鐘"));
@@ -41,7 +42,7 @@ describe("Telegram explicit confirmation", () => {
   it("requests missing rescheduling details and retains the question as context without applying records", async()=>{
     mocks.extract.mockResolvedValue({clarification:"Mary 原本有兩項安排，請講返原定日期同時間。"});
     admin.from.mockReturnValue({insert:vi.fn().mockResolvedValue({error:null})});
-    await processIncoming(message("Mary 改到聽日下午三點"),"staff-a",admin as never,send,"telegram");
+    await processIncoming(message("Mary 改到聽日下午三點"),"staff-a",admin as never,send,"telegram",{today:"2026-11-06",extract:mocks.extract});
     expect(send).toHaveBeenCalledWith("123456789",expect.stringContaining("原本有兩項安排"));
     expect(mocks.seal).toHaveBeenCalled();expect(mocks.apply).not.toHaveBeenCalled();
   });
@@ -57,13 +58,14 @@ describe("Telegram explicit confirmation", () => {
     expect(mocks.apply).not.toHaveBeenCalled();
   });
   it("cancellation never applies records", async () => {
+    const queue = {select:()=>queue,eq:()=>queue,or:()=>queue,limit:async()=>({data:[],error:null})};
+    admin.from.mockReturnValue(queue);
     mocks.latest.mockResolvedValue({ id: "draft-a", draft });
     await processIncoming(message("取消"), "staff-a", admin as never, send, "telegram");
     expect(mocks.setStatus).toHaveBeenCalledWith(admin, "draft-a", "cancelled");
     expect(mocks.apply).not.toHaveBeenCalled();
   });
   it("isolates a new meeting note while keeping an explicit clarification reply", async () => {
-    vi.stubEnv("AI_MODE","codex");
     vi.stubEnv("DATA_ENCRYPTION_KEY",Buffer.alloc(32,12).toString("base64"));
     const insert=vi.fn().mockResolvedValue({error:null});admin.from.mockReturnValue({insert});
     const prior="Mary 要改期", question="Mary 原定邊日幾點？";
@@ -90,7 +92,7 @@ describe("Telegram explicit confirmation", () => {
     const log=vi.spyOn(console,"error").mockImplementation(()=>{});
     try {
       mocks.extract.mockRejectedValueOnce({status:403,error:{error:{type:"customer_verification_required",message:"sensitive-error-placeholder"}}});
-      await processIncoming(message("客戶更新測試"),"staff-a",admin as never,send,"telegram");
+      await processIncoming(message("客戶更新測試"),"staff-a",admin as never,send,"telegram",{today:"2026-11-06",extract:mocks.extract});
       expect(send).toHaveBeenCalledWith("123456789",expect.stringContaining("請搵 Ryan"));
       expect(send.mock.calls[0][1]).not.toMatch(/Codex|API|File|驗證|佇列|資料庫/);
       expect(send.mock.calls[0][1]).not.toContain("稍後再試");

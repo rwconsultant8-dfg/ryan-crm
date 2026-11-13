@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { createAdminClient } from "../supabase/admin";
 import { coachToken, coachSecret, paToken, separateBots } from "./config";
-import { hasAIRequestAuth } from "../ai-client";
+import { codexWorkerConfigured } from "../codex/jobs";
 import { fileScope, listBotFiles, readBotFile, saveBotFile } from "./files";
 
 const scope=fileScope("coach","settings");
@@ -16,7 +16,7 @@ export const resolveCoachToken=cache(async()=>{
   return coachToken();
 });
 export const runtimeBotsSeparate=async()=>separateBots() && (!paToken() || paToken()!==await resolveCoachToken());
-export const isCoachReady=async()=>Boolean(await resolveCoachToken() && coachSecret() && await hasAIRequestAuth() && await runtimeBotsSeparate());
+export const isCoachReady=async()=>Boolean(await resolveCoachToken() && coachSecret() && codexWorkerConfigured() && await runtimeBotsSeparate());
 export async function storeCoachToken(token:string){
   await saveBotFile(createAdminClient(),scope,"coach-credentials.json",Buffer.from(JSON.stringify({token})),"application/json");
 }

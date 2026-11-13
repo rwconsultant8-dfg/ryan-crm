@@ -46,7 +46,7 @@
 - 綁定儲存在 Supabase Auth 的管理員專用 app_metadata.telegram_user_id；每次收到訊息重新核對綁定及 active 狀態，重複綁定拒絕存取。現有客戶表及加密鑰匙不變，毋須資料庫遷移。
 - 只接收已驗證 webhook 的私人訊息；整理成加密草稿後，員工回覆「確認」才寫入自己資料。重送以 telegram:update_id 去重；舊 WhatsApp 草稿不會由 Telegram 確認。
 - 網站入口 `/telegram`；舊 `/whatsapp` 轉到新入口。兩個舊 WhatsApp API 入口回 410，停止以電話身份入資料。既有加密草稿／RPC 保留相容性。
-- 啟用需要 production 環境變數 `TELEGRAM_BOT_TOKEN`、`TELEGRAM_BOT_USERNAME`、`TELEGRAM_WEBHOOK_SECRET`，以及現有 AI 整理器的 `ANTHROPIC_API_KEY`。由管理員在 Vercel 設定秘密，勿貼到對話／Git。
+- 啟用需要 production 環境變數 `TELEGRAM_BOT_TOKEN`、`TELEGRAM_BOT_USERNAME`、`TELEGRAM_WEBHOOK_SECRET`，以及 Codex worker 的 `CODEX_WORKER_TOKEN`。由管理員在 Vercel 設定秘密，勿貼到對話／Git。
 - 使用 Bot API setWebhook 將 URL 設為 `https://ryan-crm-chi.vercel.app/api/telegram`，secret_token 設為上述 webhook secret，allowed_updates 為 `["message"]`。先用 getWebhookInfo 確認成功，再由員工 /start 取得 ID 並交主管綁定。
 - 現有文件助手仍在其他主機輪詢；不要直接將同一 bot 改成 webhook，應使用獨立 bot 或先完成既有程式整合。
 - 審計相容限制：沿用的舊 RPC 底層 via 仍寫 whatsapp；草稿已記錄真實 channel=telegram，助手頁顯示實際渠道。將來如需逐列渠道報告，須另做保留歷史的 RPC 遷移。
@@ -154,7 +154,7 @@ Supabase → **Authentication → URL Configuration** → **Site URL** 填 Verce
 
 下屬用自己已綁定的 Telegram 私訊團隊 CRM bot。朝早可講「今日邀約 Mary，打算了解需要」，完成後講實際結果；詳細見客內容亦可獨立提交。助手先整理預覽，回覆「確認」才儲存，「取消」則放棄。只可處理自己負責的資料。
 
-1. 管理員在 Vercel production 設定上方列出的 Telegram 及 AI 環境變數，再部署。
+1. 管理員在 Vercel production 設定上方列出的 Telegram 及 Codex 環境變數，再部署。
 2. 使用 Telegram 官方 Bot API 的 setWebhook 註冊 `/api/telegram`，並設定 secret_token；用 getWebhookInfo 檢查結果。不要把正在其他主機輪詢的 bot 直接改成 webhook。
 3. 下屬私訊 `/start`，將回覆的數字帳戶 ID 交主管。
 4. 主管登入「員工帳戶」→ Telegram → 輸入該 ID。留空可解除綁定；停用員工會阻止助手存取。
@@ -215,9 +215,9 @@ npx playwright test # 端對端（要測試用 Supabase + 行緊嘅 app，見 pl
 
 所有資料讀寫都喺伺服器用登入用戶嘅身份進行（受 RLS 限制）；`SUPABASE_SERVICE_ROLE_KEY` 只用喺「開／停員工帳戶」，而且一定先確認係管理員。
 
-### Codex 教練整理（取代教練嘅 AI Gateway 呼叫）
+### Telegram Codex 助手
 
-`AI_MODE=codex` 將教練文字排入加密工作佇列；`CODEX_WORKER_TOKEN` 只授權
+團隊助手同 Ryan 私人 PA 都將對話排入加密 Codex 工作佇列。`CODEX_WORKER_TOKEN` 只授權
 `/api/codex/jobs` 領取／回傳整理工作，唔係 CRM 登入，亦冇直接客戶寫入接口。
 既有 `wa_drafts` 表以 `cancelled` 狀態保存獨立 `codex-job-v1` 密文封套，唔會被
 當作可確認草稿；毋須遷移資料。員工 File 仍先保存原文。工作佇列唔包含其他客戶紀錄。
@@ -232,7 +232,8 @@ CLI 以新建臨時工作目錄、read-only sandbox、停用 shell／apps／plug
 App 再驗證 schema、原 Telegram 身份仍有效、owner 同草稿版本；只回傳預覽。
 同事明確確認後先走既有 owner-scoped RPC。過期 lease、重複回傳、綁定改變或舊結果一律拒絕；
 投遞狀態不明時唔自動重播。Supervisor「檢查 AI」會排一份冇客戶資料嘅真實 Codex 檢查，
-收到完成回條先顯示通過；只見到登入／設定唔當成服務可用。私人 PA 未啟用，維持原有獨立路由。
+收到完成回條先顯示通過。私人 PA 須設定獨立 Bot 金鑰、webhook secret 及 Ryan 已綁定嘅 Telegram ID。
+PA 只讀 Ryan 自己嘅 CRM 待辦同獨立嘅私人 PA 對話，回覆限於文字。
 
 啟用：喺真正 Vultr 主機執行 `bash scripts/codex-worker/activate.sh`。
 開發 sandbox 唔等於 Vultr systemd，未驗證 worker 常駐同真實 Telegram 往返前唔可以聲稱上線完成。

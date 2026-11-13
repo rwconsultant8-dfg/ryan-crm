@@ -5,7 +5,7 @@ vi.mock("@/lib/supabase/admin",()=>({createAdminClient:()=>({})}));
 vi.mock("next/cache",()=>({revalidatePath:vi.fn()}));
 vi.mock("@/lib/telegram/registry",async()=>({...await vi.importActual<Record<string,unknown>>("@/lib/telegram/registry"),resolveTelegramAgent:mocks.resolve}));
 import { registerBotsAction } from "@/app/(app)/admin/bots/actions";
-beforeEach(()=>{vi.clearAllMocks();mocks.auth.mockResolvedValue({});mocks.resolve.mockResolvedValue({id:"ryan"});for(const[key,value]of Object.entries({TELEGRAM_COACH_BOT_TOKEN:"coach",TELEGRAM_COACH_WEBHOOK_SECRET:"coach-secret",TELEGRAM_PA_BOT_TOKEN:"pa",TELEGRAM_PA_WEBHOOK_SECRET:"pa-secret",TELEGRAM_PA_USER_ID:"12345",ANTHROPIC_API_KEY:"unit-test"}))vi.stubEnv(key,value);});
+beforeEach(()=>{vi.clearAllMocks();mocks.auth.mockResolvedValue({});mocks.resolve.mockResolvedValue({id:"ryan"});for(const[key,value]of Object.entries({TELEGRAM_COACH_BOT_TOKEN:"coach",TELEGRAM_COACH_WEBHOOK_SECRET:"coach-secret",TELEGRAM_PA_BOT_TOKEN:"pa",TELEGRAM_PA_WEBHOOK_SECRET:"pa-secret",TELEGRAM_PA_USER_ID:"12345",CODEX_WORKER_TOKEN:"worker-token-at-least-thirty-two-characters"}))vi.stubEnv(key,value);});
 afterEach(()=>{vi.unstubAllEnvs();vi.unstubAllGlobals();});
 describe("admin-only bot registration",()=>{
  it("does not contact Telegram when caller is not an admin",async()=>{mocks.auth.mockRejectedValue(new Error("not admin"));const fetcher=vi.fn();vi.stubGlobal("fetch",fetcher);await expect(registerBotsAction()).rejects.toThrow();expect(fetcher).not.toHaveBeenCalled();});

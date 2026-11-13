@@ -1,16 +1,19 @@
 import {NextRequest} from "next/server";
 import {beforeEach,afterEach,describe,it,expect,vi} from "vitest";
-const m=vi.hoisted(()=>({claim:vi.fn(),finish:vi.fn(),resolve:vi.fn(),latest:vi.fn(),process:vi.fn(),send:vi.fn(),admin:vi.fn(),syncName:vi.fn(),execute:vi.fn(),enqueue:vi.fn()}));
+const m=vi.hoisted(()=>({claim:vi.fn(),finish:vi.fn(),resolve:vi.fn(),latest:vi.fn(),process:vi.fn(),send:vi.fn(),admin:vi.fn(),syncName:vi.fn(),execute:vi.fn(),enqueue:vi.fn(),loadTasks:vi.fn(),saveFile:vi.fn(),listFiles:vi.fn(),readFile:vi.fn()}));
 vi.mock("@/lib/supabase/admin",()=>({createAdminClient:m.admin}));
 vi.mock("@/lib/codex/jobs",async importOriginal=>({...await importOriginal<object>(),loadClaim:m.claim,finishJob:m.finish,enqueueJob:m.enqueue}));
 vi.mock("@/lib/assistant/execute",async original=>({...await original<object>(),executeTool:m.execute}));
-vi.mock("@/lib/telegram/registry",()=>({resolveTelegramAgent:m.resolve}));
+vi.mock("@/lib/telegram/registry",async original=>({...await original<object>(),resolveTelegramAgent:m.resolve}));
+vi.mock("@/lib/planner-data",()=>({loadTasks:m.loadTasks}));
+vi.mock("@/lib/telegram/files",async original=>({...await original<object>(),saveBotFile:m.saveFile,listBotFiles:m.listFiles,readBotFile:m.readFile}));
 vi.mock("@/lib/telegram/transport",()=>({sendTelegramText:m.send}));
 vi.mock("@/lib/whatsapp/drafts",()=>({latestPending:m.latest}));
 vi.mock("@/lib/whatsapp/handle",()=>({processIncoming:m.process}));
 vi.mock("@/lib/telegram/branding",()=>({syncTelegramDisplayName:m.syncName}));
 import {GET,POST} from "@/app/api/codex/jobs/route";
 import {hkToday} from "@/lib/weeks";
+import {paWorkerInput,PA_PROBE_ID} from "@/lib/telegram/pa-codex";
 const id="00000000-0000-4000-8000-000000000001",lease="00000000-0000-4000-8000-000000000002";
 const job={kind:"extraction",ownerId:"staff-a",from:"12345",messageId:"telegram:1",text:"私人資料",texts:"私人資料",today:hkToday(),expectedDraftId:null};
 const result={client:{name:"試用客戶",age:"50",gender:"",occupation:"",marital:""},fields:[],checks:[],stage:"",season:"",activity:{r:0,n:0,a:0,rr:0,nr:0,pc:0},appointment:{slot:"",text:""},date:hkToday(),summary:"整理資料",tasks:[]};
@@ -106,4 +109,64 @@ it("returns a targeted clarification on a public question without searching an a
   await POST(request({id,lease,result:{response:{kind:"chat",text:answer}}}));
   expect(m.send).toHaveBeenCalledWith("12345",answer,undefined,21);
   expect(m.enqueue).not.toHaveBeenCalled();
+});
+
+
+describe("private PA Codex jobs", () => {
+  const paJob = { ...job, kind: "pa" as const, messageId: "telegram-pa:1", telegramMessageId: 23, quotedText: "Ryan 私人上文" };
+  beforeEach(() => {
+    vi.stubEnv("TELEGRAM_PA_USER_ID", "12345");
+    vi.stubEnv("TELEGRAM_PA_BOT_TOKEN", "pa-token");
+    vi.stubEnv("TELEGRAM_PA_WEBHOOK_SECRET", "pa-secret");
+    vi.stubEnv("TELEGRAM_COACH_BOT_TOKEN", "coach-token");
+    vi.stubEnv("TELEGRAM_COACH_WEBHOOK_SECRET", "coach-secret");
+    m.listFiles.mockResolvedValue([]);
+    m.claim.mockResolvedValue({job:paJob,revision:"r"});
+  });
+
+  it("builds the prompt from Ryan's own schedule and private PA history", async () => {
+    m.loadTasks.mockResolvedValue([{day:job.today,time:"15:40",name:"測試約見",plan:"測試地點",status:"planned",unneeded:"do not send"}]);
+    m.listFiles.mockResolvedValue([{key:"private-key",name:"PA對話-1.json",created_at:"2026-11-12T00:00:00Z"},{key:"uploaded-key",name:"uploaded.txt",created_at:"2026-11-12T00:00:00Z"}]);
+    m.readFile.mockResolvedValue({body:Buffer.from(JSON.stringify({user:"先前問題",assistant:"先前答案"}))});
+    const prompt = await paWorkerInput({} as never,id,paJob);
+    expect(m.listFiles).toHaveBeenCalledWith(expect.anything(),"pa/12345");
+    expect(m.readFile).toHaveBeenCalledExactlyOnceWith(expect.anything(),"pa/12345","private-key");
+    expect(m.loadTasks).toHaveBeenCalledWith(expect.anything(),job.today,expect.any(String),"staff-a");
+    expect(prompt.input).toMatchObject({quoted_reply:paJob.quotedText,conversation:[{user:"先前問題",assistant:"先前答案"}],stored_schedule:[{name:"測試約見"}]});
+    expect(JSON.stringify(prompt)).not.toContain("do not send");
+  });
+
+  it("answers the original private message and saves the turn in the PA scope", async () => {
+    const answer = {response:{kind:"chat",text:"你今日下午有約。"}};
+    expect((await POST(request({id,lease,result:answer}))).status).toBe(200);
+    expect(m.send).toHaveBeenCalledExactlyOnceWith("12345",answer.response.text,"pa-token",23);
+    expect(m.saveFile).toHaveBeenCalledWith(expect.anything(),"pa/12345",expect.stringMatching(/^PA對話-/),expect.any(Buffer),"application/json");
+    expect(m.process).not.toHaveBeenCalled();
+    expect(m.execute).not.toHaveBeenCalled();
+  });
+
+  it("rejects changed PA access before delivering private information", async () => {
+    vi.stubEnv("TELEGRAM_PA_USER_ID","54321");
+    expect((await POST(request({id,lease,result:{response:{kind:"chat",text:"私人答覆"}}}))).status).toBe(409);
+    expect(m.finish).toHaveBeenCalledWith(expect.anything(),id,"r",paJob,"failed");
+    expect(m.send).not.toHaveBeenCalled();
+    expect(m.saveFile).not.toHaveBeenCalled();
+  });
+
+  it("keeps PA model output away from the CRM write and tool paths", async () => {
+    expect((await POST(request({id,lease,result}))).status).toBe(200);
+    expect(m.enqueue).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({kind:"pa",retry:true}));
+    expect(m.process).not.toHaveBeenCalled();
+    expect(m.execute).not.toHaveBeenCalled();
+    expect(m.send).not.toHaveBeenCalled();
+  });
+
+  it("records the synthetic health check without sending Telegram or touching private files", async () => {
+    const probe = {...paJob,kind:"health",probe:"pa-chat-v1",messageId:PA_PROBE_ID};
+    m.claim.mockResolvedValue({job:probe,revision:"r"});
+    expect((await POST(request({id,lease,result:{response:{kind:"chat",text:"15:40 喺九龍公共圖書館。"}}}))).status).toBe(200);
+    expect(m.finish).toHaveBeenCalledWith(expect.anything(),id,"r",probe,"done");
+    expect(m.send).not.toHaveBeenCalled();
+    expect(m.saveFile).not.toHaveBeenCalled();
+  });
 });

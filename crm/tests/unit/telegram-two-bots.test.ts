@@ -8,7 +8,7 @@ import { fileScope, saveBotFile, readBotFile, MAX_FILE_BYTES } from "@/lib/teleg
 import { parsePrivateMessage, downloadTelegramFile } from "@/lib/telegram/transport";
 import { validTelegramId } from "@/lib/telegram/registry";
 
-beforeEach(()=>{vi.clearAllMocks();vi.stubEnv("TELEGRAM_PA_USER_ID","12345");vi.stubEnv("TELEGRAM_PA_BOT_TOKEN","pa-token");vi.stubEnv("TELEGRAM_PA_WEBHOOK_SECRET","pa-secret");vi.stubEnv("TELEGRAM_COACH_BOT_TOKEN","coach-token");vi.stubEnv("TELEGRAM_COACH_WEBHOOK_SECRET","coach-secret");vi.stubEnv("ANTHROPIC_API_KEY","test-only");vi.stubEnv("DATA_ENCRYPTION_KEY",Buffer.alloc(32,8).toString("base64"));});
+beforeEach(()=>{vi.clearAllMocks();vi.stubEnv("TELEGRAM_PA_USER_ID","12345");vi.stubEnv("TELEGRAM_PA_BOT_TOKEN","pa-token");vi.stubEnv("TELEGRAM_PA_WEBHOOK_SECRET","pa-secret");vi.stubEnv("TELEGRAM_COACH_BOT_TOKEN","coach-token");vi.stubEnv("TELEGRAM_COACH_WEBHOOK_SECRET","coach-secret");vi.stubEnv("CODEX_WORKER_TOKEN","worker-token-at-least-thirty-two-characters");vi.stubEnv("DATA_ENCRYPTION_KEY",Buffer.alloc(32,8).toString("base64"));});
 afterEach(()=>{vi.unstubAllEnvs();vi.unstubAllGlobals();});
 describe("two independent bot identities",()=>{
  it("only permits Ryan's configured numeric identity",()=>{expect(paAllowed("12345")).toBe(true);for(const id of ["12346","@Ryan","","012345"])expect(paAllowed(id)).toBe(false);expect(validTelegramId("9007199254740992")).toBe(false);});
