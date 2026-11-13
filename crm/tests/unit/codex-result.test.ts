@@ -164,7 +164,7 @@ describe("private PA Codex jobs", () => {
   it("records the synthetic health check without sending Telegram or touching private files", async () => {
     const probe = {...paJob,kind:"health",probe:"pa-chat-v1",messageId:PA_PROBE_ID};
     m.claim.mockResolvedValue({job:probe,revision:"r"});
-    expect((await POST(request({id,lease,result:{response:{kind:"chat",text:"15:40 喺九龍公共圖書館。"}}}))).status).toBe(200);
+    expect((await POST(request({id,lease,result:{response:{kind:"chat",text:"星期二下午3點40分，喺九龍公共圖書館。"}}}))).status).toBe(200);
     expect(m.finish).toHaveBeenCalledWith(expect.anything(),id,"r",probe,"done");
     expect(m.send).not.toHaveBeenCalled();
     expect(m.saveFile).not.toHaveBeenCalled();

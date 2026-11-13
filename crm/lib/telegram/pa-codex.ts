@@ -9,7 +9,7 @@ import { fileScope, listBotFiles, readBotFile, saveBotFile } from "./files";
 import { resolveTelegramAgent } from "./registry";
 import { sendTelegramText } from "./transport";
 
-export const PA_PROBE_ID = "codex-health:pa-chat-v1";
+export const PA_PROBE_ID = "codex-health:pa-chat-v2";
 export const PA_PROBE_QUESTION = "照頭先提嗰項安排，用一句答我幾點同喺邊度。";
 const probeQuote = "記得留意星期二嘅圖書館會議。";
 const probeSchedule = [{ day: "2026-11-17", time: "15:40", name: "圖書館會議", plan: "九龍公共圖書館", status: "planned" }];
@@ -80,7 +80,7 @@ export async function deliverPAReply(admin: SupabaseClient, job: Job, answer?: s
 }
 
 export function paProbePassed(answer: string | undefined) {
-  return Boolean(answer && /15:40|3[:：]40|三點四十/.test(answer) && answer.includes("九龍公共圖書館"));
+  return Boolean(answer && /15[:：]40|下午\s*(?:3|三)\s*點\s*(?:40|四十)|下午\s*3[:：]40/.test(answer) && answer.includes("九龍公共圖書館"));
 }
 
 export async function paProbeStatus(admin: SupabaseClient) {
