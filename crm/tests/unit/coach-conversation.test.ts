@@ -48,9 +48,12 @@ describe("同事普通 AI 問答", () => {
     expect(text).toContain("2026-11-10 15:30"); expect(text).not.toMatch(/Codex|API|JSON|佇列|資料庫|Profile/);
   });
   it("only passes the live probe for an accurate concise answer with no update fields", () => {
-    expect(conversationProbePassed(empty())).toBe(true);
-    const bad = empty(); bad.client.name = "Mary"; expect(conversationProbePassed(bad)).toBe(false);
-    const wrong = empty(); wrong.response!.text = "7乘8係54"; expect(conversationProbePassed(wrong)).toBe(false);
+    const routed = empty();
+    routed.response!.text = "私人日常問題可以用你嘅私人助手。我呢邊幫你處理 ZEST 團隊工作。";
+    expect(conversationProbePassed(routed)).toBe(true);
+    routed.client.name = "Mary";
+    expect(conversationProbePassed(routed)).toBe(false);
+    expect(conversationProbePassed(empty())).toBe(false);
   });
 });
 

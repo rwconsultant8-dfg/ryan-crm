@@ -12,6 +12,7 @@ vi.mock("@/lib/whatsapp/drafts",()=>({latestPending:m.latest}));
 vi.mock("@/lib/whatsapp/handle",()=>({processIncoming:m.process}));
 vi.mock("@/lib/telegram/branding",()=>({syncTelegramDisplayName:m.syncName}));
 import {GET,POST} from "@/app/api/codex/jobs/route";
+import {TEAM_SCOPE_REPLY} from "@/lib/codex/conversation-probe";
 import {hkToday} from "@/lib/weeks";
 import {paWorkerInput,PA_PROBE_ID} from "@/lib/telegram/pa-codex";
 const id="00000000-0000-4000-8000-000000000001",lease="00000000-0000-4000-8000-000000000002";
@@ -169,4 +170,14 @@ describe("private PA Codex jobs", () => {
     expect(m.send).not.toHaveBeenCalled();
     expect(m.saveFile).not.toHaveBeenCalled();
   });
+});
+
+it("delivers the team scope reply without researching a private question or writing to CRM", async () => {
+  m.claim.mockResolvedValue({job:{...job,text:"幫我上網搵私人週末想睇嘅電影"},revision:"r"});
+  const response={kind:"chat",text:TEAM_SCOPE_REPLY};
+  expect((await POST(request({id,lease,result:{response}}))).status).toBe(200);
+  expect(m.send).toHaveBeenCalledWith("12345",TEAM_SCOPE_REPLY);
+  expect(m.execute).not.toHaveBeenCalled();
+  expect(m.enqueue).not.toHaveBeenCalled();
+  expect(m.process).not.toHaveBeenCalled();
 });

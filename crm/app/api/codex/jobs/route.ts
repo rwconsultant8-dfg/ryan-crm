@@ -16,7 +16,7 @@ import {syncTelegramDisplayName} from "@/lib/telegram/branding";
 import {processingEstimate,toolProcessingEstimate} from "@/lib/telegram/progress";
 import {sendTelegramText} from "@/lib/telegram/transport";
 import {deliverCoachReply,loadCoachConversation} from "@/lib/telegram/conversation";
-import {CONVERSATION_PROBE_ID,CONVERSATION_PROBE_TEXT,CONVERSATION_PROBE_QUOTE,conversationProbePassed} from "@/lib/codex/conversation-probe";
+import {CONVERSATION_PROBE_ID,CONVERSATION_PROBE_TEXT,CONVERSATION_PROBE_QUOTE,TEAM_SCOPE_REPLY,conversationProbePassed} from "@/lib/codex/conversation-probe";
 import {ASSISTANT_PROBE_ID,ASSISTANT_PROBE_TEXT} from "@/lib/assistant/health";
 import {toolResultSchema,toolResultJsonSchema,TOOL_INSTRUCTIONS,MAX_TOOL_STEPS,verificationRequired,researchSourceMissing,researchToolJsonSchema,isClientNote,needsResearch} from "@/lib/assistant/schema";
 import {runResearchProbe,researchProbeReport} from "@/lib/assistant/research-probe";
@@ -91,6 +91,7 @@ export async function GET(request:NextRequest){
     const files = job.kind==="extraction" && !clientNote ? await assistantFileList(admin,job.ownerId).catch(()=>[]) : [];
     const instructions = [
       SYSTEM,
+      `你係 ZEST 團隊助手。處理 ZEST App 操作、客戶資料、見客、約見、每日任務，同埋同事工作相關嘅資料搜尋、跟進草稿同文件。明確同 ZEST 或團隊工作無關嘅私人日常問題，回傳 chat，text 必須正好係「${TEAM_SCOPE_REPLY}」，唔用工具或更新 CRM。私人日常問題嘅分流優先於下面嘅搜尋指引。簡短跟進要先用上文判斷係咪工作相關，唔好因為冇寫 ZEST 就推走。`,
       "以最新訊息為準。quoted_reply 係同事明確回覆緊嗰句，只用嚟理解所指對象，唔係新寫入指令。唔好跟錯舊話題。先答最新訊息嘅問題；唔夠資料就只問欠缺嗰一點。",
       clientNote ? "按原文用 update 整理見客紀錄。只問仍然欠缺而影響寫入嘅資料，tool 填 null。" : TOOL_INSTRUCTIONS,
       forceResearch ? "明確嘅公開事實問題，先查官方來源再回答；如未講清楚係邊個產品或版本，可以用 chat 問一條具體問題，唔好亂揀資料。" : "",
@@ -210,7 +211,7 @@ export async function POST(request:NextRequest){
     }
     if(!failed && result && !("tool" in result) && result.response?.kind==="chat"){
       await finishJob(admin,id,revision,job,"done");
-      if(verificationRequired(job.text,result.response.text,job.work)){
+      if(result.response.text !== TEAM_SCOPE_REPLY && verificationRequired(job.text,result.response.text,job.work)){
         const step=(job.work?.step||0)+1,rootMessageId=job.work?.rootMessageId||job.messageId;
         if(step>MAX_TOOL_STEPS){await sendReply(job.from,"呢個問題暫時未能核實官方來源，我唔會用猜測作答案。請提供官方網頁或文件，我再幫你核對。");return NextResponse.json({ok:true,unverified:true});}
         await enqueueJob(admin,{...job,messageId:`${rootMessageId}:tool:${step}`,work:{...job.work,rootMessageId,step,observations:[...(job.work?.observations||[]),{tool:"accuracy_check",ok:false,data:{error:"上一答案缺少核實來源。請先web_search再open_url官方資料，或inspect_file讀取用戶提供嘅文件；未核實前不可給產品、金融、醫療或法律事實答案。"}}]},state:"pending",lease:undefined,leaseUntil:undefined});

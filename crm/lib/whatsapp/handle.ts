@@ -22,7 +22,7 @@ import { deliverCoachReply, savedCoachReply } from "../telegram/conversation";
 export type Incoming = { from: string; messageId: string; type: string; text: string; fileId?:string;fileName?:string;mimeType?:string;fileSize?:number;telegramMessageId?:number;quotedText?:string };
 
 const HELP = `你好，我係 ZEST 團隊助手。
-有問題可以直接問我；想記錄客戶資料或安排，就講客戶姓名同重點，我會幫你更新到 app。
+我處理 ZEST App 嘅客戶資料、見客紀錄、約見同每日任務，亦可以解答 App 操作問題。要更新資料，可以直接講客戶姓名同重點。私人日常問題請用你嘅私人助手。
 亦可以幫你上網搵官方資料及小冊子、下載文件、OCR相片／PDF、修改PPTX文字及填PDF／XLSX表格。先傳檔案，再講想點改。
 最新資料會查來源；資料唔清楚時會再問你，唔會估填。`;
 
